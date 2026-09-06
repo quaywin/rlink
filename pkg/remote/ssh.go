@@ -32,11 +32,22 @@ func (c *SSHClient) Run(command string) (string, error) {
 	return strings.TrimSpace(stdout.String()), nil
 }
 
+// sanitizeRemotePath converts leading ~ to $HOME so that double-quoted shell expansion works properly.
+func sanitizeRemotePath(p string) string {
+	if strings.HasPrefix(p, "~/") {
+		return "$HOME/" + p[2:]
+	}
+	if p == "~" {
+		return "$HOME"
+	}
+	return p
+}
+
 // UploadScript writes scriptContent to a remote file path with specified executable permissions.
 func (c *SSHClient) UploadScript(remotePath string, scriptContent string) error {
+	p := sanitizeRemotePath(remotePath)
 	// We can stream content directly via SSH stdin to avoid writing a local temp file:
-	// ssh <host> 'cat > <remotePath> && chmod +x <remotePath>'
-	remoteCmd := fmt.Sprintf("mkdir -p $(dirname '%s') && cat > '%s' && chmod +x '%s'", remotePath, remotePath, remotePath)
+	remoteCmd := fmt.Sprintf(`p="%s"; mkdir -p "$(dirname "$p")" && cat > "$p" && chmod +x "$p"`, p)
 	cmd := exec.Command("ssh", c.HostAlias, remoteCmd)
 	cmd.Stdin = strings.NewReader(scriptContent)
 
@@ -52,7 +63,8 @@ func (c *SSHClient) UploadScript(remotePath string, scriptContent string) error 
 
 // DeployPrivateKey writes the private key securely to the remote machine with 0600 permissions.
 func (c *SSHClient) DeployPrivateKey(remoteKeyPath string, privateKeyContent string) error {
-	remoteCmd := fmt.Sprintf("mkdir -p $(dirname '%s') && chmod 700 $(dirname '%s') && cat > '%s' && chmod 600 '%s'", remoteKeyPath, remoteKeyPath, remoteKeyPath, remoteKeyPath)
+	p := sanitizeRemotePath(remoteKeyPath)
+	remoteCmd := fmt.Sprintf(`p="%s"; dir="$(dirname "$p")"; mkdir -p "$dir" && chmod 700 "$dir" && cat > "$p" && chmod 600 "$p"`, p)
 	cmd := exec.Command("ssh", c.HostAlias, remoteCmd)
 	cmd.Stdin = strings.NewReader(privateKeyContent)
 

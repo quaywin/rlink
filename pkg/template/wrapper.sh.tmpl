@@ -133,8 +133,18 @@ esac
 TARGET_PATH=$(resolve_target "$1")
 
 # Build editor command to run on local machine
-# Replace placeholders __RLINK_HOST__ and __RLINK_PATH__
-CMD=$(echo "$SYNTAX_PATTERN" | sed "s|__RLINK_HOST__|$HOST_ALIAS|g" | sed "s|__RLINK_PATH__|$TARGET_PATH|g")
+# Replace placeholders __RLINK_HOST__ and __RLINK_PATH__ using pure POSIX expansion
+CMD="$SYNTAX_PATTERN"
+case "$CMD" in
+    *__RLINK_HOST__*)
+        CMD="${CMD%%__RLINK_HOST__*}${HOST_ALIAS}${CMD#*__RLINK_HOST__}"
+        ;;
+esac
+case "$CMD" in
+    *__RLINK_PATH__*)
+        CMD="${CMD%%__RLINK_PATH__*}${TARGET_PATH}${CMD#*__RLINK_PATH__}"
+        ;;
+esac
 
 # Ensure standard GUI/CLI paths are included in non-login SSH environment
 REMOTE_TRIGGER="export PATH=\"/usr/local/bin:/opt/homebrew/bin:\$HOME/.local/bin:\$PATH\"; $CMD"
