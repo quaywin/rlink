@@ -1,0 +1,14 @@
+# Binaries
+/rlink
+bin/
+dist/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS artifacts
+.DS_Store
+Thumbs.db

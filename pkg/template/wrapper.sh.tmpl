@@ -1,0 +1,158 @@
+#!/bin/sh
+# ==============================================================================
+# rlink remote wrapper script
+# Generated automatically by rlink (https://github.com/quaywin/rlink)
+# Target Editor: {{.EditorName}}
+# Remote Command: {{.CommandName}}
+# Host Alias: {{.HostAlias}}
+# Connection Mode: {{.ConnectionMode}}
+# ==============================================================================
+
+set -e
+
+# Configured parameters
+EDITOR_NAME="{{.EditorName}}"
+HOST_ALIAS="{{.HostAlias}}"
+LOCAL_USER="{{.LocalUser}}"
+CONNECT_HOST="{{.ConnectHost}}"
+CONNECT_PORT="{{.ConnectPort}}"
+SSH_KEY="{{.SSHKeyPath}}"
+SYNTAX_PATTERN='{{.SyntaxPattern}}'
+
+# Print usage information
+show_help() {
+    cat <<EOF
+rlink wrapper: $EDITOR_NAME remote launcher
+
+Usage:
+    {{.CommandName}} [options] [path]
+
+Arguments:
+    path            File or directory to open (defaults to current directory '.')
+                    Supports line numbers: file.ext:line or file.ext:line:col
+
+Options:
+    -h, --help      Show this help message
+    -c, --check     Test connectivity to local machine
+    -v, --version   Show rlink wrapper version
+
+Examples:
+    {{.CommandName}} .              # Open current directory in $EDITOR_NAME
+    {{.CommandName}} src/main.rs    # Open file in $EDITOR_NAME
+    {{.CommandName}} app.go:42      # Open file at line 42
+EOF
+}
+
+# Check connectivity to local machine
+check_connection() {
+    echo "Testing connection back to local machine ($CONNECT_HOST:$CONNECT_PORT)..."
+    ssh_opts="-p $CONNECT_PORT -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes"
+    if [ -n "$SSH_KEY" ] && [ -f "$SSH_KEY" ]; then
+        ssh_opts="$ssh_opts -i $SSH_KEY"
+    fi
+
+    if ssh $ssh_opts "$LOCAL_USER@$CONNECT_HOST" "echo '[rlink] Local machine reachable!'" 2>/dev/null; then
+        echo "✓ Successfully connected to local machine."
+        exit 0
+    else
+        echo "✗ Cannot connect to local machine ($LOCAL_USER@$CONNECT_HOST:$CONNECT_PORT)."
+        {{if eq .ConnectionMode "tunnel"}}
+        echo "  Tip: For Reverse Tunnel mode, ensure you SSH'd into this server with RemoteForward enabled."
+        echo "       (e.g., check ~/.ssh/config on local machine contains 'RemoteForward $CONNECT_PORT localhost:22')"
+        {{else}}
+        echo "  Tip: Ensure the local machine is reachable at $CONNECT_HOST and SSH server is running."
+        {{end}}
+        exit 1
+    fi
+}
+
+# Resolve target to an absolute canonical path
+resolve_target() {
+    raw_arg="${1:-.}"
+
+    # Extract line/column numbers if present (e.g. file.go:42:5)
+    file_part="${raw_arg%%:*}"
+    pos_part=""
+    if [ "$file_part" != "$raw_arg" ]; then
+        pos_part=":${raw_arg#*:}"
+    fi
+
+    target="$file_part"
+    abs=""
+
+    # 1. Try realpath
+    if command -v realpath >/dev/null 2>&1; then
+        abs=$(realpath "$target" 2>/dev/null || true)
+    fi
+
+    # 2. Try readlink -f
+    if [ -z "$abs" ] && command -v readlink >/dev/null 2>&1; then
+        abs=$(readlink -f "$target" 2>/dev/null || true)
+    fi
+
+    # 3. Pure POSIX directory traversal fallback
+    if [ -z "$abs" ]; then
+        if [ -d "$target" ]; then
+            abs=$(cd "$target" 2>/dev/null && pwd)
+        elif [ -f "$target" ] || [ -e "$target" ]; then
+            d=$(dirname "$target")
+            b=$(basename "$target")
+            abs="$(cd "$d" 2>/dev/null && pwd)/$b"
+        else
+            # New/uncreated file
+            d=$(dirname "$target")
+            b=$(basename "$target")
+            abs="$(cd "$d" 2>/dev/null && pwd)/$b"
+        fi
+    fi
+
+    # Fallback to PWD if still empty
+    if [ -z "$abs" ]; then
+        abs="$(pwd)/$target"
+    fi
+
+    echo "${abs}${pos_part}"
+}
+
+# Handle arguments
+case "$1" in
+    -h|--help)
+        show_help
+        exit 0
+        ;;
+    -c|--check)
+        check_connection
+        exit 0
+        ;;
+    -v|--version)
+        echo "{{.CommandName}} (rlink remote wrapper v0.1.0)"
+        exit 0
+        ;;
+esac
+
+TARGET_PATH=$(resolve_target "$1")
+
+# Build editor command to run on local machine
+# Replace placeholders __RLINK_HOST__ and __RLINK_PATH__
+CMD=$(echo "$SYNTAX_PATTERN" | sed "s|__RLINK_HOST__|$HOST_ALIAS|g" | sed "s|__RLINK_PATH__|$TARGET_PATH|g")
+
+# Ensure standard GUI/CLI paths are included in non-login SSH environment
+REMOTE_TRIGGER="export PATH=\"/usr/local/bin:/opt/homebrew/bin:\$HOME/.local/bin:\$PATH\"; $CMD"
+
+# Build SSH command options
+SSH_ARGS="-p $CONNECT_PORT -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+if [ -n "$SSH_KEY" ] && [ -f "$SSH_KEY" ]; then
+    SSH_ARGS="$SSH_ARGS -i $SSH_KEY"
+fi
+
+printf "⚡ Opening '%s' in %s on local machine...\n" "$TARGET_PATH" "$EDITOR_NAME"
+
+if ! ssh $SSH_ARGS "$LOCAL_USER@$CONNECT_HOST" "$REMOTE_TRIGGER"; then
+    echo "❌ Failed to trigger $EDITOR_NAME on local machine ($CONNECT_HOST:$CONNECT_PORT)."
+    {{if eq .ConnectionMode "tunnel"}}
+    echo "   [Check] Is the Reverse SSH Tunnel active? Ensure you logged in with RemoteForward."
+    {{else}}
+    echo "   [Check] Is the local machine reachable at $CONNECT_HOST?"
+    {{end}}
+    exit 1
+fi
