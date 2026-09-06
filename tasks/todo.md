@@ -23,3 +23,9 @@
 - [x] Task 4.1: Add GitHub Actions CI workflow (`.github/workflows/ci.yml`) for automated test & vet
 - [x] Task 4.2: Add Architecture ASCII / Mermaid diagram and troubleshooting section in `README.md`
 - [x] Task 4.3: End-to-end verification and quality check (`go test -v ./...` & `go vet ./...`)
+
+## Phase 5: Extended Tool Support (System Opener, Clipboard, Custom Commands, Multi-OS Detection)
+- [x] Task 5.1: Implement unified Tool model & OS-specific detector for System Opener, Clipboard, and Custom tools (`pkg/detector`)
+- [x] Task 5.2: Implement POSIX shell wrapper templates for Editor, Opener, Clipboard (Copy/Paste), and Custom commands (`pkg/template`)
+- [x] Task 5.3: Update setup wizard (`cmd/setup.go`) and command flags to support all tool categories and custom inputs
+- [x] Task 5.4: Comprehensive test coverage, `go vet` verification, and documentation update

@@ -123,7 +123,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 
 		var deleteCmd string
 		if wrapperName == "all" {
-			deleteCmd = "rm -f ~/.local/bin/rzed ~/.local/bin/rcode ~/.local/bin/rcursor ~/.local/bin/rwindsurf ~/.local/bin/rcode-insiders ~/.local/bin/rsubl ~/.local/bin/zr ~/.local/bin/cr ~/.local/bin/cur ~/.local/bin/zed ~/.local/bin/code ~/.local/bin/cursor"
+			deleteCmd = "rm -f ~/.local/bin/rzed ~/.local/bin/rcode ~/.local/bin/rcursor ~/.local/bin/rwindsurf ~/.local/bin/rcode-insiders ~/.local/bin/rsubl ~/.local/bin/ropen ~/.local/bin/rclip ~/.local/bin/rpaste ~/.local/bin/zr ~/.local/bin/cr ~/.local/bin/cur ~/.local/bin/zed ~/.local/bin/code ~/.local/bin/cursor"
 		} else {
 			deleteCmd = fmt.Sprintf("rm -f ~/.local/bin/%s", wrapperName)
 		}

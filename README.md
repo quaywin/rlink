@@ -1,19 +1,23 @@
 # rlink 🔗
 
-Bridge your remote terminal sessions (Ghostty, Alacritty, iTerm2, tmux) to your local GUI editors (**Zed**, **VS Code**, **Cursor**, **Windsurf**, **Sublime Text**) with a single command (`rzed .`, `rcode .`, `rcursor .`, `rwindsurf .`).
+Bridge your remote terminal sessions (Ghostty, Alacritty, iTerm2, tmux) to your local machine with a single command (`rzed .`, `rcode .`, `rcursor .`, `ropen <file>`, `rclip`).
 
 ---
 
 ## 💡 The Problem & Solution
 
-When developing inside a remote server over SSH, opening the current directory in a local GUI editor usually requires complex manual steps: opening a new window locally, selecting Remote-SSH, navigating folders, or setting up reverse tunnels by hand.
+When developing inside a remote server over SSH, everyday local workflows become frustrating friction points:
+- Opening folders in your local GUI editor (**Zed**, **VS Code**, **Cursor**, **Windsurf**, **Sublime Text**).
+- Opening web previews or docs in your local browser (`open https://...` or `xdg-open`).
+- Viewing generated images, plots, or PDF reports locally without manual SFTP/rsync downloads.
+- Copying text or command output from the server into your local system clipboard (`pbcopy` / `wl-copy` / `xclip`).
 
-`rlink` is an automated CLI wizard that runs on your **local machine**:
-1. 🔍 **Detects your installed GUI editors** (Zed, VS Code, Cursor, Windsurf, VS Code Insiders, Sublime Text).
-2. 📖 **Parses `~/.ssh/config`** to let you pick the remote server.
+`rlink` is an automated CLI wizard running on your **local machine** (macOS/Linux) that solves this completely:
+1. 🔍 **Discovers local tools & editors** across macOS and Linux native environments.
+2. 📖 **Parses `~/.ssh/config`** to select the target remote host.
 3. 🔀 **Configures reverse connectivity** via **Reverse SSH Tunnel** (`RemoteForward`).
 4. 🔐 **Configures isolated Ed25519 authentication** for seamless, passwordless triggers.
-5. 🚀 **Provisions a zero-dependency POSIX shell wrapper script** onto your remote server (`~/.local/bin/`).
+5. 🚀 **Provisions zero-dependency POSIX shell wrappers** onto your remote server (`~/.local/bin/`).
 
 ---
 
@@ -25,29 +29,36 @@ sequenceDiagram
     participant Dev as Developer (Remote Terminal)
     participant B as Machine B (Remote Server)
     participant A as Machine A (Local Machine)
-    participant GUI as Local GUI Editor (Zed/Code/Cursor)
+    participant LocalApp as Local GUI / System Tool
 
     Note over A,B: Initial One-Time Setup (rlink setup)
-    A->>A: Detect local editors (Zed, Code, Cursor, Windsurf)
+    A->>A: Detect local tools (Zed, Code, Cursor, ropen, rclip...)
     A->>A: Parse ~/.ssh/config & generate dedicated Ed25519 key
     A->>B: SSH Upload wrapper (~/.local/bin/rzed) & private key (chmod 600)
     A->>A: Inject RemoteForward 22222 localhost:22 into ~/.ssh/config
 
-    Note over Dev,GUI: Daily Usage Workflow
-    Dev->>B: Run "rzed ." or "rzed src/main.go:42"
-    B->>B: Resolve canonical path: /home/ubuntu/project
-    B->>A: SSH back via port 22222 using dedicated key
-    A->>GUI: Launch local editor (e.g. zed "ssh://my-host/home/ubuntu/project")
-    GUI-->>Dev: Folder immediately opens in local GUI window!
+    Note over Dev,LocalApp: Daily Usage Workflows
+    alt Open Remote Folder / File in Local Editor
+        Dev->>B: Run "rzed ." or "rcode src/main.go:42"
+        B->>A: SSH back via port 22222 -> launch zed "ssh://host/path"
+        LocalApp-->>Dev: Folder immediately opens in local GUI window!
+    else Open URL or Stream Remote File Locally
+        Dev->>B: Run "ropen https://example.com" or "ropen plot.png"
+        B->>A: Stream URL or file content to /tmp/rlink_downloads/ -> open locally
+    else Sync Remote Output to Local Clipboard
+        Dev->>B: Run "cat secret_token.txt | rclip"
+        B->>A: Pipe stdin via tunnel directly to pbcopy / wl-copy
+    end
 ```
 
 ---
 
-## 🎯 Multi-Editor Support & "r<editor>" Naming Convention
+## 🎯 Supported Tools & "r<tool>" Naming Convention
 
-`rlink` uses the clean, intuitive **`r<editor>`** naming convention (where `r` stands for **remote** or **rlink**):
+`rlink` uses the clean, intuitive **`r<tool>`** naming convention (where `r` stands for **remote** or **rlink**):
 
-| Local GUI Editor | Remote Command | What It Does |
+### 1. GUI Code Editors
+| Tool | Remote Command | What It Does |
 | :--- | :--- | :--- |
 | **Zed** | **`rzed .`** | Opens current remote directory in local **Zed** |
 | **VS Code** | **`rcode .`** | Opens current remote directory in local **VS Code** |
@@ -56,27 +67,44 @@ sequenceDiagram
 | **VS Code Insiders** | **`rcode-insiders .`** | Opens current remote directory in local **VS Code Insiders** |
 | **Sublime Text** | **`rsubl .`** | Opens current remote directory in local **Sublime Text** |
 
-You can also customize the name with `--name` / `-n`, and wrap multiple editors on the exact same server. `rlink` automatically detects and reuses existing reverse tunnels!
+### 2. System Utilities & Clipboard
+| Tool | Remote Command | What It Does |
+| :--- | :--- | :--- |
+| **Web & File Opener** | **`ropen <url-or-file>`** | Opens URLs in local browser, or streams remote files to view locally |
+| **Clipboard Copy** | **`command \| rclip`** | Copies remote piped stdin, text, or file directly into local clipboard |
+| **Clipboard Paste** | **`rpaste > file`** | Streams local clipboard content into remote terminal stdout |
+| **Custom Command** | **`r<cmd> [args...]`** | Runs any local binary (`mpv`, `git-gui`, etc.) triggered from remote |
+
+You can also customize the name with `--name` / `-n`, and deploy multiple tools on the same server. `rlink` automatically detects and reuses existing reverse tunnels!
 
 ```bash
 # Example 1: Wrap Zed as 'rzed' (default)
-rlink setup --editor zed --host dev-server
+rlink setup --tool zed --host dev-server
 
-# Example 2: Wrap VS Code as 'rcode' on the same server (automatically reuses existing tunnel!)
-rlink setup --editor code --host dev-server
+# Example 2: Wrap Web/File Opener as 'ropen' (reuses existing tunnel)
+rlink setup --tool open --host dev-server
 
-# Example 3: Wrap Cursor as 'rcursor'
-rlink setup --editor cursor --host dev-server
+# Example 3: Wrap Clipboard Copy as 'rclip'
+rlink setup --tool clip --host dev-server
+
+# Example 4: Wrap a custom local command (e.g. mpv media player)
+rlink setup --tool mpv --name rmpv --host dev-server
 ```
 
 Once provisioned, simply type on your remote terminal:
 ```bash
-# On your remote server:
-rzed .              # Opens current directory in Zed locally
-rzed src/main.rs:42 # Opens file at line 42 in Zed locally
-rcode .             # Opens current directory in VS Code locally
-rcursor .           # Opens current directory in Cursor locally
-rwindsurf .         # Opens current directory in Windsurf locally
+# Code editors
+rzed .                  # Opens current directory in Zed locally
+rcode src/main.rs:42    # Opens file at line 42 in VS Code locally
+
+# Web & File Opener
+ropen https://github.com/quaywin/rlink   # Opens URL in local browser
+ropen generated_plot.png                # Streams image to local machine and opens Preview
+
+# System Clipboard
+cat id_ed25519.pub | rclip              # Copies to macOS pbcopy / Linux wl-copy
+rclip "secret token"                    # Copies string to local clipboard
+rpaste > remote_config.yaml             # Pastes local clipboard into remote file
 ```
 
 ---
@@ -84,18 +112,21 @@ rwindsurf .         # Opens current directory in Windsurf locally
 ## 🛠️ CLI Commands & Subcommands
 
 ### 1. `rlink setup`
-Interactive wizard to configure local editor mapping and provision remote wrapper.
+Interactive wizard to configure local tools and provision remote wrappers.
 ```bash
 # Interactive TUI Wizard
 rlink setup
 
 # Or non-interactive with flags:
-rlink setup --editor zed --name zr --host dev-server --yes
+rlink setup --tool zed --name rzed --host dev-server --yes
+rlink setup --tool open --name ropen --host dev-server --yes
+rlink setup --tool clip --name rclip --host dev-server --yes
 ```
 
 **Flags:**
-- `-e, --editor string`: Target GUI editor (`zed`, `code`, `cursor`)
-- `-n, --name string`: Custom remote wrapper command name (e.g. `zr`, `zed`, `cr`, `code`, `cur`)
+- `-t, --tool string`: Target tool or command (`zed`, `code`, `cursor`, `windsurf`, `open`, `clip`, `paste`, or custom command)
+- `-e, --editor string`: Target GUI editor (alias for `--tool`)
+- `-n, --name string`: Custom remote wrapper command name (default: `rzed`, `rcode`, `ropen`, `rclip`, etc.)
 - `-H, --host string`: Remote SSH host alias from `~/.ssh/config` or `user@hostname`
 - `-p, --port int`: Remote Forward port (default: `22222`)
 - `-y, --yes`: Automatically deploy without interactive confirmation prompt
@@ -121,9 +152,9 @@ Clean up configuration and remote wrappers for a target host.
 rlink remove
 
 # Target specific host and wrapper:
-rlink remove dev-server --wrapper zr --yes
+rlink remove dev-server --wrapper rzed --yes
 
-# Remove all wrappers (zr, cr, cur):
+# Remove all wrappers (rzed, rcode, ropen, rclip, rpaste):
 rlink remove dev-server --wrapper all --yes
 ```
 
@@ -181,16 +212,21 @@ rlink/
 │   │   ├── model.go
 │   │   ├── ssh_config.go
 │   │   └── ssh_config_test.go
-│   ├── detector/               # Local editor & SSH daemon discovery
-│   │   ├── editor.go
-│   │   ├── editor_test.go
+│   ├── detector/               # Local tool, editor & SSH daemon discovery
+│   │   ├── tool.go
+│   │   ├── tool_test.go
 │   │   ├── ssh_daemon.go
 │   │   └── ssh_daemon_test.go
 │   ├── remote/                 # Remote SSH client & wrapper deployment
-│   │   └── ssh.go
-│   ├── template/               # Zero-dependency POSIX script generator
+│   │   ├── ssh.go
+│   │   └── ssh_test.go
+│   ├── template/               # Zero-dependency POSIX script generators
 │   │   ├── wrapper.go
-│   │   ├── wrapper.sh.tmpl
+│   │   ├── wrapper.sh.tmpl         # Editor launcher template
+│   │   ├── wrapper_opener.sh.tmpl  # Web & file opener template
+│   │   ├── wrapper_clip.sh.tmpl    # Clipboard copy template
+│   │   ├── wrapper_paste.sh.tmpl   # Clipboard paste template
+│   │   ├── wrapper_custom.sh.tmpl  # Custom command template
 │   │   └── wrapper_test.go
 │   └── version/                # Build-time version metadata
 │       └── version.go
@@ -202,10 +238,11 @@ rlink/
 
 ## 🔐 Security & Zero Remote Dependencies
 
-1. **Pure POSIX `/bin/sh` Remote Wrapper**:
+1. **Pure POSIX `/bin/sh` Remote Wrappers**:
    - Zero Python, Node.js, Ruby, or package manager requirements on the remote server.
    - Robust path resolution fallback ladder (`realpath` $\rightarrow$ `readlink -f` $\rightarrow$ POSIX `cd && pwd`).
    - Line and column position preservation (`file.rs:42:5`).
+   - Pure POSIX file streaming over SSH without requiring `scp` or `rsync`.
 
 2. **Dedicated Ed25519 Keypair**:
    - `rlink` creates an isolated keypair at `~/.ssh/rlink_ed25519` rather than exposing your personal master keys.
@@ -223,7 +260,7 @@ On macOS, incoming SSH connections must be enabled:
 3. (Alternatively via terminal): `sudo systemsetup -setremotelogin on`
 
 ### 2. "Command not found" on Remote Server
-If you run `zr .` and receive `command not found`, ensure `~/.local/bin` is in your remote `$PATH`.
+If you run `rzed .` or `ropen` and receive `command not found`, ensure `~/.local/bin` is in your remote `$PATH`.
 Add this line to your remote `~/.bashrc` or `~/.zshrc`:
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
@@ -232,7 +269,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ### 3. Testing Connectivity
 Run the built-in diagnostic test directly from your remote machine:
 ```bash
-zr -c      # or: cr -c, cur -c
+rzed -c     # or: rcode -c, ropen -c, rclip -c
 ```
 This tests network connectivity back to your local machine and prints actionable tips if the reverse tunnel is inactive.
 

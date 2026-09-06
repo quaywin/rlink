@@ -17,6 +17,7 @@ import (
 )
 
 var (
+	flagTool   string
 	flagEditor string
 	flagName   string
 	flagHost   string
@@ -26,16 +27,19 @@ var (
 
 var setupCmd = &cobra.Command{
 	Use:   "setup",
-	Short: "Interactive wizard to configure local editor and provision remote wrapper",
-	Long: `rlink setup configures your local editor mapping and provisions a wrapper script on your remote server via Reverse SSH Tunnel.
-You can run this multiple times to set up multiple different editors on the same server with custom names
-(for example: 'rzed' for Zed, 'rcode' for VS Code, 'rcursor' for Cursor, 'rwindsurf' for Windsurf).`,
+	Short: "Interactive wizard to configure local tools and provision remote wrappers",
+	Long: `rlink setup configures local tools (GUI editors, system opener, clipboard, custom commands)
+and provisions wrapper scripts on your remote server via Reverse SSH Tunnel.
+
+You can run this multiple times to set up multiple different tools on the same server with custom names
+(for example: 'rzed' for Zed, 'rcode' for VS Code, 'ropen' for Web/File Opener, 'rclip' for Clipboard).`,
 	RunE: runSetupWizard,
 }
 
 func init() {
-	setupCmd.Flags().StringVarP(&flagEditor, "editor", "e", "", "Target GUI editor: zed, code, cursor, windsurf, code-insiders, sublime")
-	setupCmd.Flags().StringVarP(&flagName, "name", "n", "", "Custom remote wrapper command name (default: rzed, rcode, rcursor, rwindsurf, etc.)")
+	setupCmd.Flags().StringVarP(&flagTool, "tool", "t", "", "Target tool or command: zed, code, cursor, windsurf, open, clip, paste, or custom command")
+	setupCmd.Flags().StringVarP(&flagEditor, "editor", "e", "", "Target GUI editor (alias for --tool)")
+	setupCmd.Flags().StringVarP(&flagName, "name", "n", "", "Custom remote wrapper command name (default: rzed, rcode, ropen, rclip, etc.)")
 	setupCmd.Flags().StringVarP(&flagHost, "host", "H", "", "Remote SSH host alias from ~/.ssh/config or user@hostname")
 	setupCmd.Flags().IntVarP(&flagPort, "port", "p", 0, "Remote Forward port (default: 22222)")
 	setupCmd.Flags().BoolVarP(&flagYes, "yes", "y", false, "Automatically deploy without interactive confirmation prompt")
@@ -43,77 +47,117 @@ func init() {
 
 func runSetupWizard(cmd *cobra.Command, args []string) error {
 	fmt.Println()
-	fmt.Println("🔗 rlink — Bridge Remote Terminal to Local GUI Editor")
+	fmt.Println("🔗 rlink — Bridge Remote Terminal to Local Actions")
 	fmt.Println("=========================================================")
 	fmt.Println()
 
-	// -------------------------------------------------------------
-	// 1. Local Editor Detection & Selection
-	// -------------------------------------------------------------
-	detected := detector.DetectInstalledEditors()
-	if len(detected) == 0 {
-		return fmt.Errorf("no supported editor definitions found")
+	// Handle alias --editor -> --tool
+	if flagTool == "" && flagEditor != "" {
+		flagTool = flagEditor
 	}
 
-	var chosenEditor *detector.DetectedEditor
+	// -------------------------------------------------------------
+	// 1. Local Tool Detection & Selection
+	// -------------------------------------------------------------
+	allDetected := detector.DetectAllTools()
+	if len(allDetected) == 0 {
+		return fmt.Errorf("no supported tools found on local system")
+	}
+
+	var chosenTool *detector.DetectedTool
 	var wrapperCmdName string = flagName
 
-	if flagEditor != "" {
-		for i := range detected {
-			if strings.EqualFold(string(detected[i].Type), flagEditor) {
-				chosenEditor = &detected[i]
+	if flagTool != "" {
+		// 1. Try matching against predefined tools
+		for i := range allDetected {
+			if strings.EqualFold(string(allDetected[i].Type), flagTool) ||
+				strings.EqualFold(allDetected[i].DefaultWrapperName, flagTool) ||
+				strings.EqualFold(allDetected[i].Name, flagTool) {
+				chosenTool = &allDetected[i]
 				break
 			}
 		}
-		if chosenEditor == nil {
-			return fmt.Errorf("unknown editor %q. Supported editors: zed, code, cursor", flagEditor)
+
+		// 2. If not matched, attempt custom command lookup
+		if chosenTool == nil {
+			custom, err := detector.ValidateCustomCommand(flagTool)
+			if err != nil {
+				return fmt.Errorf("tool %q not recognized and not found as local executable: %w", flagTool, err)
+			}
+			chosenTool = custom
 		}
 	} else {
-		var editorChoices []huh.Option[string]
-		defaultEditorType := string(detected[0].Type)
+		var toolChoices []huh.Option[string]
+		defaultToolType := string(allDetected[0].Type)
 
-		for _, ed := range detected {
-			label := ed.DisplayLabel()
-			editorChoices = append(editorChoices, huh.NewOption(label, string(ed.Type)))
-			if ed.IsInstalled && defaultEditorType == string(detected[0].Type) {
-				defaultEditorType = string(ed.Type)
+		for _, t := range allDetected {
+			label := t.DisplayLabel()
+			toolChoices = append(toolChoices, huh.NewOption(label, string(t.Type)))
+			if t.IsInstalled && defaultToolType == string(allDetected[0].Type) && t.Type != allDetected[0].Type {
+				defaultToolType = string(t.Type)
 			}
 		}
+		toolChoices = append(toolChoices, huh.NewOption("⚙️  [+] Custom Local Command...", "custom_manual_command"))
 
-		var selectedEditorType string = defaultEditorType
+		var selectedToolType string = defaultToolType
 
-		formEditor := huh.NewForm(
+		formTool := huh.NewForm(
 			huh.NewGroup(
 				huh.NewSelect[string]().
-					Title("Step 1: Select Local GUI Editor").
-					Description("Choose which editor to open when triggered from remote terminal").
-					Options(editorChoices...).
-					Value(&selectedEditorType),
+					Title("Step 1: Select Tool or Action").
+					Description("Choose an editor, system tool, or custom command to bridge to remote terminal").
+					Options(toolChoices...).
+					Value(&selectedToolType),
 			),
 		)
 
-		if err := formEditor.Run(); err != nil {
+		if err := formTool.Run(); err != nil {
 			return err
 		}
 
-		for i := range detected {
-			if string(detected[i].Type) == selectedEditorType {
-				chosenEditor = &detected[i]
-				break
+		if selectedToolType == "custom_manual_command" {
+			customCmdInput := ""
+			formCustom := huh.NewForm(
+				huh.NewGroup(
+					huh.NewInput().
+						Title("Enter Local Command").
+						Description("Executable name or path available on this local machine").
+						Placeholder("e.g. mpv, subl, gimp, git-gui").
+						Value(&customCmdInput),
+				),
+			)
+			if err := formCustom.Run(); err != nil {
+				return err
+			}
+			customTool, err := detector.ValidateCustomCommand(customCmdInput)
+			if err != nil {
+				return fmt.Errorf("invalid custom command: %w", err)
+			}
+			chosenTool = customTool
+		} else {
+			for i := range allDetected {
+				if string(allDetected[i].Type) == selectedToolType {
+					chosenTool = &allDetected[i]
+					break
+				}
 			}
 		}
+	}
+
+	if chosenTool == nil {
+		return fmt.Errorf("no tool selected")
 	}
 
 	// Wrapper command name prompt (if not specified via --name flag)
 	if wrapperCmdName == "" {
-		wrapperCmdName = chosenEditor.DefaultWrapperName
+		wrapperCmdName = chosenTool.DefaultWrapperName
 
 		descriptionText := fmt.Sprintf(
-			"Command you will type on the remote terminal to open %s.\n"+
+			"Command you will type on the remote terminal to trigger %s.\n"+
 				"Recommended convention: '%s' (with 'r' prefix for remote).\n"+
-				"Tip: You can customize any name, and wrap multiple editors on the same server!",
-			chosenEditor.Name,
-			chosenEditor.DefaultWrapperName,
+				"Tip: You can customize any name, and wrap multiple tools on the same server!",
+			chosenTool.Name,
+			chosenTool.DefaultWrapperName,
 		)
 
 		formWrapperName := huh.NewForm(
@@ -121,7 +165,7 @@ func runSetupWizard(cmd *cobra.Command, args []string) error {
 				huh.NewInput().
 					Title("Remote Command Name (Wrapper Name)").
 					Description(descriptionText).
-					Placeholder(fmt.Sprintf("e.g. %s, rcode, rcursor, rwindsurf", chosenEditor.DefaultWrapperName)).
+					Placeholder(fmt.Sprintf("e.g. %s", chosenTool.DefaultWrapperName)).
 					Value(&wrapperCmdName),
 			),
 		)
@@ -292,13 +336,16 @@ func runSetupWizard(cmd *cobra.Command, args []string) error {
 	}
 
 	wrapperConfig := template.WrapperConfig{
-		EditorName:    chosenEditor.Name,
+		ToolType:      string(chosenTool.Type),
+		ToolCategory:  string(chosenTool.Category),
+		ToolName:      chosenTool.Name,
 		CommandName:   wrapperCmdName,
 		HostAlias:     selectedHost,
 		LocalUser:     localUsername,
 		ConnectPort:   connectPort,
 		SSHKeyPath:    sshKeyPathOnRemote,
-		SyntaxPattern: chosenEditor.SyntaxTemplate,
+		SyntaxPattern: chosenTool.SyntaxTemplate,
+		LocalBinary:   chosenTool.BinaryPath,
 	}
 
 	scriptContent, err := template.GenerateWrapper(wrapperConfig)
@@ -312,7 +359,7 @@ func runSetupWizard(cmd *cobra.Command, args []string) error {
 			huh.NewGroup(
 				huh.NewConfirm().
 					Title(fmt.Sprintf("Deploy '%s' to remote server '%s' now?", wrapperCmdName, selectedHost)).
-					Description(fmt.Sprintf("Will install %s wrapper at remote bin directory", chosenEditor.Name)).
+					Description(fmt.Sprintf("Will install %s wrapper at remote bin directory", chosenTool.Name)).
 					Value(&shouldDeploy),
 			),
 		)
@@ -373,15 +420,27 @@ func runSetupWizard(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Print final congratulations
+	// Print final congratulations & usage examples tailored to chosen tool
 	fmt.Println("\n=========================================================")
 	fmt.Println("🎉 Setup Complete!")
 	fmt.Println("=========================================================")
-	fmt.Printf("On remote server '%s', you can now simply run:\n", selectedHost)
-	fmt.Printf("   $ %s .\n", wrapperCmdName)
-	fmt.Printf("to instantly open the current folder in %s on this machine!\n\n", chosenEditor.Name)
-	fmt.Println("💡 Tip: Want to wrap another editor on the same server (e.g. Zed alongside VS Code)?")
-	fmt.Println("   Simply run 'rlink setup' again and pick a different command name!")
+	fmt.Printf("On remote server '%s', you can now run:\n", selectedHost)
+	switch chosenTool.Type {
+	case detector.ToolClipCopy:
+		fmt.Printf("   $ cat file.txt | %s\n", wrapperCmdName)
+		fmt.Printf("   $ %s \"text to copy\"\n", wrapperCmdName)
+	case detector.ToolClipPaste:
+		fmt.Printf("   $ %s > file.txt\n", wrapperCmdName)
+		fmt.Printf("   $ %s | grep something\n", wrapperCmdName)
+	case detector.ToolOpener:
+		fmt.Printf("   $ %s https://github.com\n", wrapperCmdName)
+		fmt.Printf("   $ %s plot.png\n", wrapperCmdName)
+	default:
+		fmt.Printf("   $ %s .\n", wrapperCmdName)
+	}
+	fmt.Printf("to trigger %s on this machine!\n\n", chosenTool.Name)
+	fmt.Println("💡 Tip: Want to set up another tool (e.g. 'ropen', 'rclip', or another editor)?")
+	fmt.Println("   Simply run 'rlink setup' again!")
 	fmt.Println()
 
 	return nil

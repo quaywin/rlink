@@ -1,0 +1,116 @@
+#!/bin/sh
+# ==============================================================================
+# rlink remote wrapper: Web & File Opener ({{.CommandName}})
+# Generated automatically by rlink (https://github.com/quaywin/rlink)
+# Host Alias: {{.HostAlias}}
+# Connection Mode: Reverse SSH Tunnel
+# ==============================================================================
+
+set -e
+
+COMMAND_NAME="{{.CommandName}}"
+HOST_ALIAS="{{.HostAlias}}"
+LOCAL_USER="{{.LocalUser}}"
+CONNECT_PORT="{{.ConnectPort}}"
+SSH_KEY="{{.SSHKeyPath}}"
+
+show_help() {
+    cat <<EOF
+rlink wrapper: Web & File Opener ($COMMAND_NAME)
+
+Usage:
+    $COMMAND_NAME <url-or-file>
+
+Description:
+    Opens URLs in your local browser, or streams remote files
+    over Reverse SSH Tunnel to view them directly on your local machine.
+
+Options:
+    -h, --help      Show this help message
+    -c, --check     Test connectivity to local machine
+    -v, --version   Show rlink wrapper version
+
+Examples:
+    $COMMAND_NAME https://github.com
+    $COMMAND_NAME http://localhost:8080/metrics
+    $COMMAND_NAME plot.png
+    $COMMAND_NAME document.pdf
+EOF
+}
+
+check_connection() {
+    echo "Testing reverse tunnel connection back to local machine (127.0.0.1:$CONNECT_PORT)..."
+    ssh_opts="-p $CONNECT_PORT -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes"
+    if [ -n "$SSH_KEY" ] && [ -f "$SSH_KEY" ]; then
+        ssh_opts="$ssh_opts -i $SSH_KEY"
+    fi
+
+    if ssh $ssh_opts "$LOCAL_USER@127.0.0.1" "echo '[rlink] Local machine reachable!'" 2>/dev/null; then
+        echo "✓ Successfully connected to local machine."
+        exit 0
+    else
+        echo "✗ Cannot connect to local machine via reverse tunnel ($LOCAL_USER@127.0.0.1:$CONNECT_PORT)."
+        echo "  Tip: Ensure you SSH'd into this server with RemoteForward enabled."
+        exit 1
+    fi
+}
+
+case "$1" in
+    -h|--help)
+        show_help
+        exit 0
+        ;;
+    -c|--check)
+        check_connection
+        exit 0
+        ;;
+    -v|--version)
+        echo "$COMMAND_NAME (rlink remote opener v0.1.0)"
+        exit 0
+        ;;
+esac
+
+if [ -z "$1" ]; then
+    show_help
+    exit 1
+fi
+
+TARGET="$1"
+
+SSH_ARGS="-p $CONNECT_PORT -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+if [ -n "$SSH_KEY" ] && [ -f "$SSH_KEY" ]; then
+    SSH_ARGS="$SSH_ARGS -i $SSH_KEY"
+fi
+
+# Detect if target is a URL
+case "$TARGET" in
+    http://*|https://*|ftp://*|file://*|mailto:*)
+        printf "🌐 Opening URL '%s' on local machine...\n" "$TARGET"
+        REMOTE_CMD="export PATH=\"/usr/local/bin:/opt/homebrew/bin:\$HOME/.local/bin:\$PATH\"; open \"$TARGET\" 2>/dev/null || xdg-open \"$TARGET\" 2>/dev/null"
+        ssh $SSH_ARGS "$LOCAL_USER@127.0.0.1" "$REMOTE_CMD"
+        exit 0
+        ;;
+esac
+
+# Target is a file or directory on remote machine
+if [ ! -e "$TARGET" ]; then
+    echo "❌ Error: File or directory '$TARGET' not found."
+    exit 1
+fi
+
+if [ -d "$TARGET" ]; then
+    ABS_DIR=$(cd "$TARGET" 2>/dev/null && pwd)
+    printf "📁 Opening remote directory '%s' on local machine...\n" "$ABS_DIR"
+    REMOTE_CMD="export PATH=\"/usr/local/bin:/opt/homebrew/bin:\$HOME/.local/bin:\$PATH\"; open \"sftp://$HOST_ALIAS$ABS_DIR\" 2>/dev/null || xdg-open \"sftp://$HOST_ALIAS$ABS_DIR\" 2>/dev/null || echo 'Opened remote directory: $ABS_DIR'"
+    ssh $SSH_ARGS "$LOCAL_USER@127.0.0.1" "$REMOTE_CMD"
+    exit 0
+fi
+
+# Target is a file: stream over reverse SSH to local temp directory
+BASENAME=$(basename "$TARGET")
+REMOTE_TMP="/tmp/rlink_downloads/$HOST_ALIAS"
+
+printf "📥 Streaming '%s' to local machine and opening...\n" "$BASENAME"
+
+CAT_CMD="mkdir -p '$REMOTE_TMP' && cat > '$REMOTE_TMP/$BASENAME' && (open '$REMOTE_TMP/$BASENAME' 2>/dev/null || xdg-open '$REMOTE_TMP/$BASENAME' 2>/dev/null)"
+cat "$TARGET" | ssh $SSH_ARGS "$LOCAL_USER@127.0.0.1" "export PATH=\"/usr/local/bin:/opt/homebrew/bin:\$HOME/.local/bin:\$PATH\"; $CAT_CMD"
