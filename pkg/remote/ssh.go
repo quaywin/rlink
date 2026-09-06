@@ -19,8 +19,10 @@ func NewSSHClient(hostAlias string) *SSHClient {
 }
 
 // Run executes a command on the remote host via SSH and returns its standard output.
+// It wraps the command in POSIX sh -c to ensure compatibility across any remote login shell (fish, csh, zsh, etc.).
 func (c *SSHClient) Run(command string) (string, error) {
-	cmd := exec.Command("ssh", "-o", "BatchMode=no", c.HostAlias, command)
+	remoteCmd := fmt.Sprintf("sh -c '%s'", strings.ReplaceAll(command, "'", `'\''`))
+	cmd := exec.Command("ssh", "-o", "BatchMode=no", c.HostAlias, remoteCmd)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -44,10 +46,9 @@ func sanitizeRemotePath(p string) string {
 }
 
 // UploadScript writes scriptContent to a remote file path with specified executable permissions.
+// Uses sh -c with positional argument to remain 100% agnostic to the remote user's login shell (fish, tcsh, zsh, etc.).
 func (c *SSHClient) UploadScript(remotePath string, scriptContent string) error {
-	p := sanitizeRemotePath(remotePath)
-	// We can stream content directly via SSH stdin to avoid writing a local temp file:
-	remoteCmd := fmt.Sprintf(`p="%s"; mkdir -p "$(dirname "$p")" && cat > "$p" && chmod +x "$p"`, p)
+	remoteCmd := fmt.Sprintf(`sh -c 'p="$1"; case "$p" in "~"/*) p="$HOME/${p#\~/}" ;; "~") p="$HOME" ;; esac; dir=$(dirname "$p"); mkdir -p "$dir" && cat > "$p" && chmod +x "$p"' _ '%s'`, strings.ReplaceAll(remotePath, "'", `'\''`))
 	cmd := exec.Command("ssh", c.HostAlias, remoteCmd)
 	cmd.Stdin = strings.NewReader(scriptContent)
 
@@ -62,9 +63,9 @@ func (c *SSHClient) UploadScript(remotePath string, scriptContent string) error 
 }
 
 // DeployPrivateKey writes the private key securely to the remote machine with 0600 permissions.
+// Uses sh -c with positional argument to remain 100% agnostic to the remote user's login shell (fish, tcsh, zsh, etc.).
 func (c *SSHClient) DeployPrivateKey(remoteKeyPath string, privateKeyContent string) error {
-	p := sanitizeRemotePath(remoteKeyPath)
-	remoteCmd := fmt.Sprintf(`p="%s"; dir="$(dirname "$p")"; mkdir -p "$dir" && chmod 700 "$dir" && cat > "$p" && chmod 600 "$p"`, p)
+	remoteCmd := fmt.Sprintf(`sh -c 'p="$1"; case "$p" in "~"/*) p="$HOME/${p#\~/}" ;; "~") p="$HOME" ;; esac; dir=$(dirname "$p"); mkdir -p "$dir" && chmod 700 "$dir" && cat > "$p" && chmod 600 "$p"' _ '%s'`, strings.ReplaceAll(remoteKeyPath, "'", `'\''`))
 	cmd := exec.Command("ssh", c.HostAlias, remoteCmd)
 	cmd.Stdin = strings.NewReader(privateKeyContent)
 
