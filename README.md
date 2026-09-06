@@ -11,7 +11,7 @@ When developing inside a remote server over SSH, opening the current directory i
 `rlink` is an automated CLI wizard that runs on your **local machine**:
 1. 🔍 **Detects your installed GUI editors** (Zed, VS Code, Cursor).
 2. 📖 **Parses `~/.ssh/config`** to let you pick the remote server.
-3. 🔀 **Configures reverse connectivity** via **Reverse SSH Tunnel** (`RemoteForward`) or **Direct/Tailscale IP**.
+3. 🔀 **Configures reverse connectivity** via **Reverse SSH Tunnel** (`RemoteForward`).
 4. 🔐 **Configures isolated Ed25519 authentication** for seamless, passwordless triggers.
 5. 🚀 **Provisions a zero-dependency POSIX shell wrapper script** onto your remote server (`~/.local/bin/`).
 
@@ -85,8 +85,7 @@ rlink setup --editor zed --name zr --host dev-server --yes
 - `-e, --editor string`: Target GUI editor (`zed`, `code`, `cursor`)
 - `-n, --name string`: Custom remote wrapper command name (e.g. `zr`, `zed`, `cr`, `code`, `cur`)
 - `-H, --host string`: Remote SSH host alias from `~/.ssh/config` or `user@hostname`
-- `-p, --port int`: Forward/connect port (default: `22222` for tunnel, `22` for direct)
-- `-m, --mode string`: Connection mode (`tunnel` or `direct`)
+- `-p, --port int`: Remote Forward port (default: `22222`)
 - `-y, --yes`: Automatically deploy without interactive confirmation prompt
 
 ---
@@ -170,10 +169,9 @@ rlink/
 │   │   ├── model.go
 │   │   ├── ssh_config.go
 │   │   └── ssh_config_test.go
-│   ├── detector/               # Local editor, SSH daemon, & network discovery
+│   ├── detector/               # Local editor & SSH daemon discovery
 │   │   ├── editor.go
 │   │   ├── editor_test.go
-│   │   ├── network.go
 │   │   ├── ssh_daemon.go
 │   │   └── ssh_daemon_test.go
 │   ├── remote/                 # Remote SSH client & wrapper deployment

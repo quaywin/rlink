@@ -5,7 +5,7 @@
 # Target Editor: {{.EditorName}}
 # Remote Command: {{.CommandName}}
 # Host Alias: {{.HostAlias}}
-# Connection Mode: {{.ConnectionMode}}
+# Connection Mode: Reverse SSH Tunnel
 # ==============================================================================
 
 set -e
@@ -14,7 +14,6 @@ set -e
 EDITOR_NAME="{{.EditorName}}"
 HOST_ALIAS="{{.HostAlias}}"
 LOCAL_USER="{{.LocalUser}}"
-CONNECT_HOST="{{.ConnectHost}}"
 CONNECT_PORT="{{.ConnectPort}}"
 SSH_KEY="{{.SSHKeyPath}}"
 SYNTAX_PATTERN='{{.SyntaxPattern}}'
@@ -45,23 +44,19 @@ EOF
 
 # Check connectivity to local machine
 check_connection() {
-    echo "Testing connection back to local machine ($CONNECT_HOST:$CONNECT_PORT)..."
+    echo "Testing reverse tunnel connection back to local machine (127.0.0.1:$CONNECT_PORT)..."
     ssh_opts="-p $CONNECT_PORT -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes"
     if [ -n "$SSH_KEY" ] && [ -f "$SSH_KEY" ]; then
         ssh_opts="$ssh_opts -i $SSH_KEY"
     fi
 
-    if ssh $ssh_opts "$LOCAL_USER@$CONNECT_HOST" "echo '[rlink] Local machine reachable!'" 2>/dev/null; then
+    if ssh $ssh_opts "$LOCAL_USER@127.0.0.1" "echo '[rlink] Local machine reachable!'" 2>/dev/null; then
         echo "✓ Successfully connected to local machine."
         exit 0
     else
-        echo "✗ Cannot connect to local machine ($LOCAL_USER@$CONNECT_HOST:$CONNECT_PORT)."
-        {{if eq .ConnectionMode "tunnel"}}
-        echo "  Tip: For Reverse Tunnel mode, ensure you SSH'd into this server with RemoteForward enabled."
-        echo "       (e.g., check ~/.ssh/config on local machine contains 'RemoteForward $CONNECT_PORT localhost:22')"
-        {{else}}
-        echo "  Tip: Ensure the local machine is reachable at $CONNECT_HOST and SSH server is running."
-        {{end}}
+        echo "✗ Cannot connect to local machine via reverse tunnel ($LOCAL_USER@127.0.0.1:$CONNECT_PORT)."
+        echo "  Tip: Ensure you SSH'd into this server with RemoteForward enabled."
+        echo "       (Check ~/.ssh/config on local machine contains 'RemoteForward $CONNECT_PORT localhost:22')"
         exit 1
     fi
 }
@@ -157,12 +152,8 @@ fi
 
 printf "⚡ Opening '%s' in %s on local machine...\n" "$TARGET_PATH" "$EDITOR_NAME"
 
-if ! ssh $SSH_ARGS "$LOCAL_USER@$CONNECT_HOST" "$REMOTE_TRIGGER"; then
-    echo "❌ Failed to trigger $EDITOR_NAME on local machine ($CONNECT_HOST:$CONNECT_PORT)."
-    {{if eq .ConnectionMode "tunnel"}}
+if ! ssh $SSH_ARGS "$LOCAL_USER@127.0.0.1" "$REMOTE_TRIGGER"; then
+    echo "❌ Failed to trigger $EDITOR_NAME on local machine via reverse tunnel (127.0.0.1:$CONNECT_PORT)."
     echo "   [Check] Is the Reverse SSH Tunnel active? Ensure you logged in with RemoteForward."
-    {{else}}
-    echo "   [Check] Is the local machine reachable at $CONNECT_HOST?"
-    {{end}}
     exit 1
 fi

@@ -21,14 +21,13 @@ var (
 	flagName   string
 	flagHost   string
 	flagPort   int
-	flagMode   string
 	flagYes    bool
 )
 
 var setupCmd = &cobra.Command{
 	Use:   "setup",
 	Short: "Interactive wizard to configure local editor and provision remote wrapper",
-	Long: `rlink setup configures your local editor mapping and provisions a wrapper script on your remote server.
+	Long: `rlink setup configures your local editor mapping and provisions a wrapper script on your remote server via Reverse SSH Tunnel.
 You can run this multiple times to set up multiple different editors on the same server with custom names
 (for example: 'zr' or 'zed' for Zed, 'cr' or 'code' for VS Code, 'cur' or 'cursor' for Cursor).`,
 	RunE: runSetupWizard,
@@ -38,8 +37,7 @@ func init() {
 	setupCmd.Flags().StringVarP(&flagEditor, "editor", "e", "", "Target GUI editor: zed, code, or cursor")
 	setupCmd.Flags().StringVarP(&flagName, "name", "n", "", "Custom remote wrapper command name (e.g. zr, zed, cr, code, cur, cursor)")
 	setupCmd.Flags().StringVarP(&flagHost, "host", "H", "", "Remote SSH host alias from ~/.ssh/config or user@hostname")
-	setupCmd.Flags().IntVarP(&flagPort, "port", "p", 0, "Forward/connect port (default: 22222 for tunnel, 22 for direct)")
-	setupCmd.Flags().StringVarP(&flagMode, "mode", "m", "", "Connection mode: 'tunnel' (reverse SSH) or 'direct' (Tailscale/LAN)")
+	setupCmd.Flags().IntVarP(&flagPort, "port", "p", 0, "Remote Forward port (default: 22222)")
 	setupCmd.Flags().BoolVarP(&flagYes, "yes", "y", false, "Automatically deploy without interactive confirmation prompt")
 }
 
@@ -210,82 +208,41 @@ func runSetupWizard(cmd *cobra.Command, args []string) error {
 	}
 
 	// -------------------------------------------------------------
-	// 3. Connection Strategy (Reverse Tunnel vs Direct / Tailscale)
+	// 3. Reverse SSH Tunnel Setup
 	// -------------------------------------------------------------
-	strategyChoice := flagMode
+	sshStatus := detector.CheckLocalSSHServer(22)
+	if !sshStatus.IsListening {
+		fmt.Println()
+		fmt.Printf("⚠️  Notice: Local SSH daemon is not currently listening on port 22.\n")
+		fmt.Printf("   %s\n\n", sshStatus.HelpGuide)
+	}
+
+	connectPort := 22222
+	injectConfig := false
+
 	existingTunnelPort := 0
 	if selectedHostConfig != nil {
 		existingTunnelPort = selectedHostConfig.GetExistingTunnelPort()
 	}
 
-	if strategyChoice == "" {
-		strategyChoice = "tunnel"
-		var strategyOptions []huh.Option[string]
-
-		if existingTunnelPort > 0 {
-			strategyOptions = append(strategyOptions, huh.NewOption(
-				fmt.Sprintf("Reuse Existing SSH Tunnel (Port %d already forwarded for %s)", existingTunnelPort, selectedHost),
-				"tunnel",
-			))
-		} else {
-			strategyOptions = append(strategyOptions, huh.NewOption(
-				"Reverse SSH Tunnel (Recommended: Works behind NAT, Wi-Fi, Firewalls)",
-				"tunnel",
-			))
-		}
-
-		strategyOptions = append(strategyOptions, huh.NewOption(
-			"Direct / Tailscale Network (Uses Tailscale private mesh or LAN IP)",
-			"direct",
-		))
-
-		formStrategy := huh.NewForm(
-			huh.NewGroup(
-				huh.NewSelect[string]().
-					Title("Step 3: Connection Strategy").
-					Description("How the remote server communicates back to your local machine").
-					Options(strategyOptions...).
-					Value(&strategyChoice),
-			),
-		)
-
-		if err := formStrategy.Run(); err != nil {
-			return err
-		}
-	}
-
-	connectHost := "127.0.0.1"
-	connectPort := 22222
 	if flagPort > 0 {
 		connectPort = flagPort
+		injectConfig = true
 	} else if existingTunnelPort > 0 {
+		// Reuse existing tunnel automatically without prompt
 		connectPort = existingTunnelPort
-	}
-
-	injectConfig := false
-
-	if strategyChoice == "tunnel" {
-		sshStatus := detector.CheckLocalSSHServer(22)
-		if !sshStatus.IsListening {
-			fmt.Println()
-			fmt.Printf("⚠️  Notice: Local SSH daemon is not currently listening on port 22.\n")
-			fmt.Printf("   %s\n\n", sshStatus.HelpGuide)
-		}
-
-		if existingTunnelPort > 0 && flagPort == 0 {
-			// Reuse existing tunnel automatically
-			fmt.Printf("✓ Detected existing RemoteForward on port %d for '%s'. Reusing tunnel.\n", existingTunnelPort, selectedHost)
-			connectPort = existingTunnelPort
-			injectConfig = false
-		} else {
-			portStr := strconv.Itoa(connectPort)
-			injectConfig = true
-
+		injectConfig = false
+		fmt.Printf("✓ Found existing RemoteForward tunnel on port %d for '%s'. Reusing tunnel.\n", existingTunnelPort, selectedHost)
+	} else {
+		// New host configuration
+		injectConfig = true
+		if !flagYes {
+			portStr := "22222"
 			formTunnel := huh.NewForm(
 				huh.NewGroup(
 					huh.NewInput().
-						Title("Remote Forward Port").
-						Description("Port on remote server that forwards to local SSH server (port 22)").
+						Title("Step 3: Remote Forward Port").
+						Description("Port on the remote server forwarded back to your local machine (default: 22222)").
 						Value(&portStr),
 					huh.NewConfirm().
 						Title("Update ~/.ssh/config automatically?").
@@ -296,75 +253,9 @@ func runSetupWizard(cmd *cobra.Command, args []string) error {
 			if err := formTunnel.Run(); err != nil {
 				return err
 			}
-			if p, err := strconv.Atoi(portStr); err == nil {
+			if p, err := strconv.Atoi(portStr); err == nil && p > 0 {
 				connectPort = p
 			}
-		}
-	} else {
-		// Direct mode: Suggest IPs
-		netSuggestions := detector.DetectNetworkSuggestions()
-		var ipChoices []huh.Option[string]
-		for _, s := range netSuggestions {
-			ipChoices = append(ipChoices, huh.NewOption(fmt.Sprintf("%s: %s (%s)", s.Type, s.Address, s.Description), s.Address))
-		}
-		ipChoices = append(ipChoices, huh.NewOption("[+] Enter IP/hostname manually", "manual_ip"))
-
-		var selectedIP string
-		if len(ipChoices) > 0 {
-			selectedIP = ipChoices[0].Value
-		} else {
-			selectedIP = "manual_ip"
-		}
-
-		formDirectIP := huh.NewForm(
-			huh.NewGroup(
-				huh.NewSelect[string]().
-					Title("Local Machine IP Address").
-					Description("Choose the IP address of this local machine reachable by the remote server").
-					Options(ipChoices...).
-					Value(&selectedIP),
-			),
-		)
-		if err := formDirectIP.Run(); err != nil {
-			return err
-		}
-
-		if selectedIP == "manual_ip" {
-			manualIPInput := ""
-			formManualIP := huh.NewForm(
-				huh.NewGroup(
-					huh.NewInput().
-						Title("Enter Local IP/Hostname").
-						Placeholder("e.g. 100.x.y.z or my-macbook.local").
-						Value(&manualIPInput),
-				),
-			)
-			if err := formManualIP.Run(); err != nil {
-				return err
-			}
-			connectHost = strings.TrimSpace(manualIPInput)
-		} else {
-			connectHost = selectedIP
-		}
-
-		portStr := "22"
-		if flagPort > 0 {
-			portStr = strconv.Itoa(flagPort)
-		}
-
-		formDirectPort := huh.NewForm(
-			huh.NewGroup(
-				huh.NewInput().
-					Title("Local SSH Port").
-					Description("Port where the SSH daemon is listening on this machine").
-					Value(&portStr),
-			),
-		)
-		if err := formDirectPort.Run(); err != nil {
-			return err
-		}
-		if p, err := strconv.Atoi(portStr); err == nil {
-			connectPort = p
 		}
 	}
 
@@ -393,11 +284,6 @@ func runSetupWizard(cmd *cobra.Command, args []string) error {
 	// -------------------------------------------------------------
 	// 4. Script Generation & Remote Provisioning
 	// -------------------------------------------------------------
-	connMode := template.ModeReverseTunnel
-	if strategyChoice == "direct" {
-		connMode = template.ModeDirectIP
-	}
-
 	// Ensure dedicated Ed25519 keypair for seamless passwordless remote triggering
 	keypair, keyErr := auth.EnsureLocalSSHKeyPair()
 	sshKeyPathOnRemote := ""
@@ -408,15 +294,13 @@ func runSetupWizard(cmd *cobra.Command, args []string) error {
 	}
 
 	wrapperConfig := template.WrapperConfig{
-		EditorName:     chosenEditor.Name,
-		CommandName:    wrapperCmdName,
-		HostAlias:      selectedHost,
-		LocalUser:      localUsername,
-		ConnectHost:    connectHost,
-		ConnectPort:    connectPort,
-		SSHKeyPath:     sshKeyPathOnRemote,
-		ConnectionMode: connMode,
-		SyntaxPattern:  chosenEditor.SyntaxTemplate,
+		EditorName:    chosenEditor.Name,
+		CommandName:   wrapperCmdName,
+		HostAlias:     selectedHost,
+		LocalUser:     localUsername,
+		ConnectPort:   connectPort,
+		SSHKeyPath:    sshKeyPathOnRemote,
+		SyntaxPattern: chosenEditor.SyntaxTemplate,
 	}
 
 	scriptContent, err := template.GenerateWrapper(wrapperConfig)
@@ -480,8 +364,8 @@ func runSetupWizard(cmd *cobra.Command, args []string) error {
 		fmt.Printf("   export PATH=\"%s:$PATH\"\n", targetDir)
 	}
 
-	// If tunnel mode and user agreed, update local ~/.ssh/config
-	if strategyChoice == "tunnel" && injectConfig {
+	// If user agreed, update local ~/.ssh/config with RemoteForward
+	if injectConfig {
 		fmt.Printf("🔧 Injecting 'RemoteForward %d localhost:22' into %s (Host %s)...\n", connectPort, sshConfigPath, selectedHost)
 		if err := config.InjectRemoteForward(sshConfigPath, selectedHost, connectPort, 22); err != nil {
 			fmt.Printf("Warning: Failed to update %s automatically: %v\n", sshConfigPath, err)

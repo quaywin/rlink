@@ -11,26 +11,15 @@ import (
 //go:embed wrapper.sh.tmpl
 var wrapperTemplateSource string
 
-// ConnectionMode defines whether connection is via reverse tunnel or direct IP.
-type ConnectionMode string
-
-const (
-	ModeReverseTunnel ConnectionMode = "tunnel"
-	ModeDirectIP      ConnectionMode = "direct"
-)
-
 // WrapperConfig contains the template parameters to generate the remote script.
 type WrapperConfig struct {
-	EditorName     string
-	CommandName    string // e.g. "zr", "cr", "cur"
-	HostAlias      string // SSH Host alias as recognized by local machine
-	LocalUser      string // Username on local machine to SSH into
-	ConnectHost    string // "127.0.0.1" for tunnel, or Tailscale/LAN IP
-	ConnectPort    int    // Forward port (e.g. 22222) or local SSH port (22)
-	SSHKeyPath     string // Path to identity file on remote server, e.g. "~/.ssh/id_rsa"
-	ConnectionMode ConnectionMode
-	// SyntaxPattern: Command pattern with __RLINK_HOST__ and __RLINK_PATH__ tokens
-	SyntaxPattern string
+	EditorName    string
+	CommandName   string // e.g. "zr", "cr", "cur"
+	HostAlias     string // SSH Host alias as recognized by local machine
+	LocalUser     string // Username on local machine to SSH into
+	ConnectPort   int    // Reverse forward port (e.g. 22222)
+	SSHKeyPath    string // Path to identity file on remote server, e.g. "$HOME/.ssh/rlink_id_ed25519"
+	SyntaxPattern string // Command pattern with __RLINK_HOST__ and __RLINK_PATH__ tokens
 }
 
 // GenerateWrapper renders the POSIX wrapper script for the remote machine.

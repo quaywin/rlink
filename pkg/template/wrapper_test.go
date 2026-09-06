@@ -7,15 +7,13 @@ import (
 
 func TestGenerateWrapperZed(t *testing.T) {
 	cfg := WrapperConfig{
-		EditorName:     "Zed",
-		CommandName:    "zr",
-		HostAlias:      "dev-box",
-		LocalUser:      "myuser",
-		ConnectHost:    "127.0.0.1",
-		ConnectPort:    22222,
-		SSHKeyPath:     "~/.ssh/rlink_id_ed25519",
-		ConnectionMode: ModeReverseTunnel,
-		SyntaxPattern:  `zed "ssh://{{.Host}}{{.Path}}"`,
+		EditorName:    "Zed",
+		CommandName:   "zr",
+		HostAlias:     "dev-box",
+		LocalUser:     "myuser",
+		ConnectPort:   22222,
+		SSHKeyPath:    "$HOME/.ssh/rlink_id_ed25519",
+		SyntaxPattern: `zed "ssh://{{.Host}}{{.Path}}"`,
 	}
 
 	script, err := GenerateWrapper(cfg)

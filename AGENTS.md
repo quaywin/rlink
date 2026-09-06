@@ -31,7 +31,7 @@
 - **Commands**: `cmd/` directory holds all Cobra subcommands (`root.go`, `setup.go`, `version.go`).
 - **Packages**: Reusable logic belongs in `pkg/`:
   - `pkg/config`: OpenSSH client `~/.ssh/config` parsing and `RemoteForward` injection.
-  - `pkg/detector`: Local GUI editor discovery (Zed, VS Code, Cursor) and network discovery (Tailscale, LAN).
+  - `pkg/detector`: Local GUI editor discovery (Zed, VS Code, Cursor) and local SSH daemon check.
   - `pkg/template`: Embedded POSIX `/bin/sh` wrapper generator (`zr`, `cr`, etc.).
   - `pkg/remote`: Remote server SSH execution, binary path discovery, and wrapper deployment.
   - `pkg/version`: Version string injected via GoReleaser `-ldflags`.
