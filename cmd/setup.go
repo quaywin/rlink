@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
+	"github.com/quaywin/rlink/pkg/auth"
 	"github.com/quaywin/rlink/pkg/config"
 	"github.com/quaywin/rlink/pkg/detector"
 	"github.com/quaywin/rlink/pkg/remote"
@@ -264,6 +265,13 @@ func runSetupWizard(cmd *cobra.Command, args []string) error {
 	injectConfig := false
 
 	if strategyChoice == "tunnel" {
+		sshStatus := detector.CheckLocalSSHServer(22)
+		if !sshStatus.IsListening {
+			fmt.Println()
+			fmt.Printf("⚠️  Notice: Local SSH daemon is not currently listening on port 22.\n")
+			fmt.Printf("   %s\n\n", sshStatus.HelpGuide)
+		}
+
 		if existingTunnelPort > 0 && flagPort == 0 {
 			// Reuse existing tunnel automatically
 			fmt.Printf("✓ Detected existing RemoteForward on port %d for '%s'. Reusing tunnel.\n", existingTunnelPort, selectedHost)
@@ -390,6 +398,15 @@ func runSetupWizard(cmd *cobra.Command, args []string) error {
 		connMode = template.ModeDirectIP
 	}
 
+	// Ensure dedicated Ed25519 keypair for seamless passwordless remote triggering
+	keypair, keyErr := auth.EnsureLocalSSHKeyPair()
+	sshKeyPathOnRemote := ""
+	if keyErr == nil {
+		if err := auth.AuthorizeLocalKey(keypair.PublicKeyContent); err == nil {
+			sshKeyPathOnRemote = "$HOME/.ssh/rlink_id_ed25519"
+		}
+	}
+
 	wrapperConfig := template.WrapperConfig{
 		EditorName:     chosenEditor.Name,
 		CommandName:    wrapperCmdName,
@@ -397,6 +414,7 @@ func runSetupWizard(cmd *cobra.Command, args []string) error {
 		LocalUser:      localUsername,
 		ConnectHost:    connectHost,
 		ConnectPort:    connectPort,
+		SSHKeyPath:     sshKeyPathOnRemote,
 		ConnectionMode: connMode,
 		SyntaxPattern:  chosenEditor.SyntaxTemplate,
 	}
@@ -431,6 +449,14 @@ func runSetupWizard(cmd *cobra.Command, args []string) error {
 	// Execute remote provisioning
 	fmt.Printf("\n🚀 Connecting to '%s' to deploy '%s' wrapper...\n", selectedHost, wrapperCmdName)
 	sshClient := remote.NewSSHClient(selectedHost)
+
+	// Deploy dedicated private key to remote server for passwordless reverse authentication
+	if keypair != nil {
+		remoteKeyPath := "~/.ssh/rlink_id_ed25519"
+		if err := sshClient.DeployPrivateKey(remoteKeyPath, keypair.PrivateKeyContent); err == nil {
+			fmt.Println("✓ Configured dedicated Ed25519 key on remote server for passwordless auth.")
+		}
+	}
 
 	targetDir, err := sshClient.DetectRemoteBinDir()
 	if err != nil {

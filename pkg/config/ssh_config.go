@@ -200,3 +200,55 @@ func InjectRemoteForward(configPath string, hostAlias string, remotePort int, lo
 	result := strings.Join(newLines, "\n")
 	return os.WriteFile(configPath, []byte(result), 0600)
 }
+
+// RemoveRemoteForward removes any RemoteForward directives from the given host block.
+func RemoveRemoteForward(configPath string, hostAlias string) error {
+	contentBytes, err := os.ReadFile(configPath)
+	if os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("failed to read ssh config: %w", err)
+	}
+
+	lines := strings.Split(string(contentBytes), "\n")
+	var newLines []string
+	inTargetHost := false
+	modified := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		fields := strings.Fields(trimmed)
+
+		if len(fields) >= 2 && strings.EqualFold(fields[0], "host") {
+			isTarget := false
+			for _, pattern := range fields[1:] {
+				if pattern == hostAlias {
+					isTarget = true
+					break
+				}
+			}
+			inTargetHost = isTarget
+		} else if inTargetHost && len(fields) >= 1 && strings.EqualFold(fields[0], "match") {
+			inTargetHost = false
+		}
+
+		if inTargetHost && len(fields) >= 1 && strings.EqualFold(fields[0], "remoteforward") {
+			// Skip this directive
+			modified = true
+			continue
+		}
+
+		newLines = append(newLines, line)
+	}
+
+	if !modified {
+		return nil
+	}
+
+	bakPath := configPath + ".rlink.bak"
+	_ = os.WriteFile(bakPath, contentBytes, 0600)
+
+	result := strings.Join(newLines, "\n")
+	return os.WriteFile(configPath, []byte(result), 0600)
+}
+

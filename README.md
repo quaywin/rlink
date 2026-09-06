@@ -2,6 +2,8 @@
 
 Bridge your remote terminal sessions (Ghostty, Alacritty, iTerm2, tmux) to your local GUI editors (**Zed**, **VS Code**, **Cursor**) with a single command (`zr .`, `cr .`, `zed .`, etc.).
 
+---
+
 ## 💡 The Problem & Solution
 
 When developing inside a remote server over SSH, opening the current directory in a local GUI editor usually requires complex manual steps: opening a new window locally, selecting Remote-SSH, navigating folders, or setting up reverse tunnels by hand.
@@ -10,20 +12,49 @@ When developing inside a remote server over SSH, opening the current directory i
 1. 🔍 **Detects your installed GUI editors** (Zed, VS Code, Cursor).
 2. 📖 **Parses `~/.ssh/config`** to let you pick the remote server.
 3. 🔀 **Configures reverse connectivity** via **Reverse SSH Tunnel** (`RemoteForward`) or **Direct/Tailscale IP**.
-4. 🚀 **Provisions a zero-dependency POSIX shell wrapper script** onto your remote server (`~/.local/bin/`).
+4. 🔐 **Configures isolated Ed25519 authentication** for seamless, passwordless triggers.
+5. 🚀 **Provisions a zero-dependency POSIX shell wrapper script** onto your remote server (`~/.local/bin/`).
 
-### 🎯 Multi-Editor Support & Custom Command Naming
+---
 
-You can choose any custom command name for your wrapper (`--name` / `-n`), enabling you to wrap multiple editors on the exact same server!
+## 🔄 Architecture & Flow Diagram
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Dev as Developer (Remote Terminal)
+    participant B as Machine B (Remote Server)
+    participant A as Machine A (Local Machine)
+    participant GUI as Local GUI Editor (Zed/VSCode/Cursor)
+
+    Note over A,B: Initial One-Time Setup (rlink setup)
+    A->>A: Detect local editors (Zed, Code, Cursor)
+    A->>A: Parse ~/.ssh/config & generate dedicated Ed25519 key
+    A->>B: SSH Upload wrapper (~/.local/bin/zr) & private key (chmod 600)
+    A->>A: Inject RemoteForward 22222 localhost:22 into ~/.ssh/config
+
+    Note over Dev,GUI: Daily Usage Workflow
+    Dev->>B: Run "zr ." or "zr src/main.go:42"
+    B->>B: Resolve canonical path: /home/ubuntu/project
+    B->>A: SSH back via port 22222 using dedicated key
+    A->>GUI: Launch local editor (e.g. zed "ssh://my-host/home/ubuntu/project")
+    GUI-->>Dev: Folder immediately opens in local GUI window!
+```
+
+---
+
+## 🎯 Multi-Editor Support & Custom Command Naming
+
+You can choose any custom command name for your wrapper (`--name` / `-n`), enabling you to wrap multiple editors on the exact same server. `rlink` automatically detects and reuses existing reverse tunnels!
 
 ```bash
-# Example: Wrap Zed as 'zr' or 'zed'
+# Example 1: Wrap Zed as 'zr' or 'zed'
 rlink setup --editor zed --name zr --host dev-server
 
-# Example: Wrap VS Code as 'cr' or 'code' on the same server (automatically reuses tunnel!)
+# Example 2: Wrap VS Code as 'cr' or 'code' (automatically reuses existing tunnel!)
 rlink setup --editor code --name cr --host dev-server
 
-# Example: Wrap Cursor as 'cur' or 'cursor'
+# Example 3: Wrap Cursor as 'cur' or 'cursor'
 rlink setup --editor cursor --name cur --host dev-server
 ```
 
@@ -38,7 +69,76 @@ cur .             # Opens current directory in Cursor locally
 
 ---
 
-## 🏗️ Architecture & Project Structure
+## 🛠️ CLI Commands & Subcommands
+
+### 1. `rlink setup`
+Interactive wizard to configure local editor mapping and provision remote wrapper.
+```bash
+# Interactive TUI Wizard
+rlink setup
+
+# Or non-interactive with flags:
+rlink setup --editor zed --name zr --host dev-server --yes
+```
+
+**Flags:**
+- `-e, --editor string`: Target GUI editor (`zed`, `code`, `cursor`)
+- `-n, --name string`: Custom remote wrapper command name (e.g. `zr`, `zed`, `cr`, `code`, `cur`)
+- `-H, --host string`: Remote SSH host alias from `~/.ssh/config` or `user@hostname`
+- `-p, --port int`: Forward/connect port (default: `22222` for tunnel, `22` for direct)
+- `-m, --mode string`: Connection mode (`tunnel` or `direct`)
+- `-y, --yes`: Automatically deploy without interactive confirmation prompt
+
+---
+
+### 2. `rlink status` (alias: `rlink list`, `rlink ls`)
+Inspect `~/.ssh/config` and show all hosts configured with `rlink` reverse tunnels.
+```bash
+# Quick overview:
+rlink status
+
+# Live connection check and wrapper discovery:
+rlink status --check
+```
+
+---
+
+### 3. `rlink remove` (alias: `rlink rm`, `rlink uninstall`)
+Clean up configuration and remote wrappers for a target host.
+```bash
+# Interactive removal:
+rlink remove
+
+# Target specific host and wrapper:
+rlink remove dev-server --wrapper zr --yes
+
+# Remove all wrappers (zr, cr, cur):
+rlink remove dev-server --wrapper all --yes
+```
+
+---
+
+### 4. `rlink completion`
+Generate shell autocompletion scripts for `zsh`, `bash`, `fish`, or `powershell`.
+```bash
+# Zsh (macOS / Linux):
+rlink completion zsh > "${fpath[1]}/_rlink"
+
+# Bash:
+rlink completion bash > /etc/bash_completion.d/rlink
+
+# Fish:
+rlink completion fish > ~/.config/fish/completions/rlink.fish
+```
+
+---
+
+### 5. `rlink version`
+Displays semantic version, target OS, architecture, and compiler runtime information.
+
+---
+
+## 🏗️ Architecture & Project Layout
 
 Aligned with the standard Go project structure and `agys`:
 
@@ -46,6 +146,7 @@ Aligned with the standard Go project structure and `agys`:
 rlink/
 ├── .github/
 │   └── workflows/
+│       ├── ci.yml              # Multi-OS CI matrix (Ubuntu & macOS)
 │       └── release.yml         # GitHub Actions GoReleaser automation
 ├── .goreleaser.yaml            # Multi-arch GoReleaser v2 configuration
 ├── AGENTS.md                   # Agent development rules and safety standards
@@ -53,20 +154,28 @@ rlink/
 ├── LICENSE                     # MIT License
 ├── README.md                   # Project documentation
 ├── cmd/                        # Cobra CLI commands
+│   ├── completion.go           # Shell autocompletion
+│   ├── remove.go               # Wrapper uninstaller & config rollback
 │   ├── root.go                 # Root command & version integration
 │   ├── setup.go                # Interactive TUI Wizard (Charm huh) & CLI flags
+│   ├── status.go               # Host & tunnel status viewer
 │   └── version.go              # Version command
 ├── install.sh                  # One-line curl installer for macOS & Linux
 ├── main.go                     # Application entrypoint calling cmd.Execute()
 ├── pkg/                        # Core reusable libraries
+│   ├── auth/                   # Isolated Ed25519 key management & authorized_keys
+│   │   ├── key.go
+│   │   └── key_test.go
 │   ├── config/                 # OpenSSH config parser & RemoteForward injector
 │   │   ├── model.go
 │   │   ├── ssh_config.go
 │   │   └── ssh_config_test.go
-│   ├── detector/               # Local editor & network discovery
+│   ├── detector/               # Local editor, SSH daemon, & network discovery
 │   │   ├── editor.go
 │   │   ├── editor_test.go
-│   │   └── network.go
+│   │   ├── network.go
+│   │   ├── ssh_daemon.go
+│   │   └── ssh_daemon_test.go
 │   ├── remote/                 # Remote SSH client & wrapper deployment
 │   │   └── ssh.go
 │   ├── template/               # Zero-dependency POSIX script generator
@@ -81,49 +190,65 @@ rlink/
 
 ---
 
-## ⚙️ How the Remote Wrapper Script Works
+## 🔐 Security & Zero Remote Dependencies
 
-The generated remote wrapper script has **Zero External Dependencies** (`#!/bin/sh` POSIX compliant):
+1. **Pure POSIX `/bin/sh` Remote Wrapper**:
+   - Zero Python, Node.js, Ruby, or package manager requirements on the remote server.
+   - Robust path resolution fallback ladder (`realpath` $\rightarrow$ `readlink -f` $\rightarrow$ POSIX `cd && pwd`).
+   - Line and column position preservation (`file.rs:42:5`).
 
-1. **Path Resolution**:
-   - Resolves target relative paths (`.`, `src/foo.rs`) to absolute canonical paths.
-   - Falls back gracefully across `realpath`, `readlink -f`, and POSIX `cd && pwd`.
-   - Preserves line numbers (e.g., `main.go:42:5`).
-
-2. **Triggering Local Editor**:
-   - **Reverse SSH Tunnel Mode**: Connects to `127.0.0.1:<PORT>` (forwarded to local port 22).
-   - **Direct / Tailscale Mode**: Connects directly to local Tailscale IP or LAN IP.
-   - Executes local CLI command:
-     - Zed: `zed "ssh://<HostAlias>/canonical/path"`
-     - VS Code: `code --remote ssh-remote+<HostAlias> /canonical/path`
-     - Cursor: `cursor --remote ssh-remote+<HostAlias> /canonical/path`
-
-3. **Status Feedback & Troubleshooting**:
-   - Includes `-c` / `--check` connectivity test.
-   - Outputs clear error tips if reverse tunnel is not active.
+2. **Dedicated Ed25519 Keypair**:
+   - `rlink` creates an isolated keypair at `~/.ssh/rlink_ed25519` rather than exposing your personal master keys.
+   - The public key is securely added to local `~/.ssh/authorized_keys` with strict file permissions (`0600`).
+   - The private key is transferred to `~/.ssh/rlink_id_ed25519` on the remote server with `chmod 600`.
 
 ---
 
-## 🚀 Quick Start
+## ❓ Troubleshooting
+
+### 1. "Local SSH server is not listening on port 22" (macOS)
+On macOS, incoming SSH connections must be enabled:
+1. Open **System Settings** $\rightarrow$ **General** $\rightarrow$ **Sharing**.
+2. Turn ON **Remote Login**.
+3. (Alternatively via terminal): `sudo systemsetup -setremotelogin on`
+
+### 2. "Command not found" on Remote Server
+If you run `zr .` and receive `command not found`, ensure `~/.local/bin` is in your remote `$PATH`.
+Add this line to your remote `~/.bashrc` or `~/.zshrc`:
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+### 3. Testing Connectivity
+Run the built-in diagnostic test directly from your remote machine:
+```bash
+zr -c      # or: cr -c, cur -c
+```
+This tests network connectivity back to your local machine and prints actionable tips if the reverse tunnel is inactive.
+
+---
+
+## 🚀 Installation & Build
 
 ### One-line Install:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/quaywin/rlink/main/install.sh | bash
 ```
 
-### Local Build & Development:
+### Local Build:
 ```bash
 go build -o rlink .
 ./rlink setup
 ```
 
-### CLI Flags:
+### Run Tests:
 ```bash
-rlink setup --help
-  -e, --editor string   Target GUI editor: zed, code, or cursor
-  -n, --name string     Custom remote wrapper command name (e.g. zr, zed, cr, code, cur, cursor)
-  -H, --host string     Remote SSH host alias from ~/.ssh/config or user@hostname
-  -p, --port int        Forward/connect port (default: 22222 for tunnel, 22 for direct)
-  -m, --mode string     Connection mode: 'tunnel' (reverse SSH) or 'direct' (Tailscale/LAN)
-  -y, --yes             Automatically deploy without interactive confirmation prompt
+go test -v ./...
+go vet ./...
 ```
+
+---
+
+## 📄 License
+
+MIT License © 2026 Thang Nguyen

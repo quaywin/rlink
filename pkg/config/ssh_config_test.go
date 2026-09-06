@@ -155,3 +155,35 @@ func TestGetExistingTunnelPort(t *testing.T) {
 	}
 }
 
+func TestRemoveRemoteForward(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config")
+
+	sampleConfig := `Host dev-server
+    HostName 192.168.1.100
+    RemoteForward 22222 localhost:22
+    User ubuntu
+
+Host prod-api
+    HostName api.example.com
+`
+	if err := os.WriteFile(configPath, []byte(sampleConfig), 0600); err != nil {
+		t.Fatalf("failed to write test ssh config: %v", err)
+	}
+
+	err := RemoveRemoteForward(configPath, "dev-server")
+	if err != nil {
+		t.Fatalf("unexpected error removing forward: %v", err)
+	}
+
+	bytes, _ := os.ReadFile(configPath)
+	content := string(bytes)
+	if strings.Contains(content, "RemoteForward") {
+		t.Errorf("expected RemoteForward to be removed, but still present:\n%s", content)
+	}
+	if !strings.Contains(content, "Host dev-server") || !strings.Contains(content, "User ubuntu") {
+		t.Errorf("other directives were lost:\n%s", content)
+	}
+}
+
+

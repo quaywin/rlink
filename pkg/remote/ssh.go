@@ -50,6 +50,23 @@ func (c *SSHClient) UploadScript(remotePath string, scriptContent string) error 
 	return nil
 }
 
+// DeployPrivateKey writes the private key securely to the remote machine with 0600 permissions.
+func (c *SSHClient) DeployPrivateKey(remoteKeyPath string, privateKeyContent string) error {
+	remoteCmd := fmt.Sprintf("mkdir -p $(dirname '%s') && chmod 700 $(dirname '%s') && cat > '%s' && chmod 600 '%s'", remoteKeyPath, remoteKeyPath, remoteKeyPath, remoteKeyPath)
+	cmd := exec.Command("ssh", c.HostAlias, remoteCmd)
+	cmd.Stdin = strings.NewReader(privateKeyContent)
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to deploy private key to %s: %s: %w", remoteKeyPath, strings.TrimSpace(stderr.String()), err)
+	}
+
+	return nil
+}
+
+
 // DetectRemoteBinDir inspects the remote server's PATH and determines the best directory to install the wrapper.
 // Priority:
 // 1. ~/.local/bin (user-level, non-root, standard on modern Linux)
