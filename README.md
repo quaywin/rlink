@@ -1,6 +1,6 @@
 # rlink 🔗
 
-Bridge your remote terminal sessions (Ghostty, Alacritty, iTerm2, tmux) to your local GUI editors (**Zed**, **VS Code**, **Cursor**) with a single command (`zr .`, `cr .`, `zed .`, etc.).
+Bridge your remote terminal sessions (Ghostty, Alacritty, iTerm2, tmux) to your local GUI editors (**Zed**, **VS Code**, **Cursor**, **Windsurf**, **Sublime Text**) with a single command (`rzed .`, `rcode .`, `rcursor .`, `rwindsurf .`).
 
 ---
 
@@ -9,7 +9,7 @@ Bridge your remote terminal sessions (Ghostty, Alacritty, iTerm2, tmux) to your 
 When developing inside a remote server over SSH, opening the current directory in a local GUI editor usually requires complex manual steps: opening a new window locally, selecting Remote-SSH, navigating folders, or setting up reverse tunnels by hand.
 
 `rlink` is an automated CLI wizard that runs on your **local machine**:
-1. 🔍 **Detects your installed GUI editors** (Zed, VS Code, Cursor).
+1. 🔍 **Detects your installed GUI editors** (Zed, VS Code, Cursor, Windsurf, VS Code Insiders, Sublime Text).
 2. 📖 **Parses `~/.ssh/config`** to let you pick the remote server.
 3. 🔀 **Configures reverse connectivity** via **Reverse SSH Tunnel** (`RemoteForward`).
 4. 🔐 **Configures isolated Ed25519 authentication** for seamless, passwordless triggers.
@@ -25,16 +25,16 @@ sequenceDiagram
     participant Dev as Developer (Remote Terminal)
     participant B as Machine B (Remote Server)
     participant A as Machine A (Local Machine)
-    participant GUI as Local GUI Editor (Zed/VSCode/Cursor)
+    participant GUI as Local GUI Editor (Zed/Code/Cursor)
 
     Note over A,B: Initial One-Time Setup (rlink setup)
-    A->>A: Detect local editors (Zed, Code, Cursor)
+    A->>A: Detect local editors (Zed, Code, Cursor, Windsurf)
     A->>A: Parse ~/.ssh/config & generate dedicated Ed25519 key
-    A->>B: SSH Upload wrapper (~/.local/bin/zr) & private key (chmod 600)
+    A->>B: SSH Upload wrapper (~/.local/bin/rzed) & private key (chmod 600)
     A->>A: Inject RemoteForward 22222 localhost:22 into ~/.ssh/config
 
     Note over Dev,GUI: Daily Usage Workflow
-    Dev->>B: Run "zr ." or "zr src/main.go:42"
+    Dev->>B: Run "rzed ." or "rzed src/main.go:42"
     B->>B: Resolve canonical path: /home/ubuntu/project
     B->>A: SSH back via port 22222 using dedicated key
     A->>GUI: Launch local editor (e.g. zed "ssh://my-host/home/ubuntu/project")
@@ -43,28 +43,40 @@ sequenceDiagram
 
 ---
 
-## 🎯 Multi-Editor Support & Custom Command Naming
+## 🎯 Multi-Editor Support & "r<editor>" Naming Convention
 
-You can choose any custom command name for your wrapper (`--name` / `-n`), enabling you to wrap multiple editors on the exact same server. `rlink` automatically detects and reuses existing reverse tunnels!
+`rlink` uses the clean, intuitive **`r<editor>`** naming convention (where `r` stands for **remote** or **rlink**):
+
+| Local GUI Editor | Remote Command | What It Does |
+| :--- | :--- | :--- |
+| **Zed** | **`rzed .`** | Opens current remote directory in local **Zed** |
+| **VS Code** | **`rcode .`** | Opens current remote directory in local **VS Code** |
+| **Cursor** | **`rcursor .`** | Opens current remote directory in local **Cursor** |
+| **Windsurf** | **`rwindsurf .`** | Opens current remote directory in local **Windsurf** |
+| **VS Code Insiders** | **`rcode-insiders .`** | Opens current remote directory in local **VS Code Insiders** |
+| **Sublime Text** | **`rsubl .`** | Opens current remote directory in local **Sublime Text** |
+
+You can also customize the name with `--name` / `-n`, and wrap multiple editors on the exact same server. `rlink` automatically detects and reuses existing reverse tunnels!
 
 ```bash
-# Example 1: Wrap Zed as 'zr' or 'zed'
-rlink setup --editor zed --name zr --host dev-server
+# Example 1: Wrap Zed as 'rzed' (default)
+rlink setup --editor zed --host dev-server
 
-# Example 2: Wrap VS Code as 'cr' or 'code' (automatically reuses existing tunnel!)
-rlink setup --editor code --name cr --host dev-server
+# Example 2: Wrap VS Code as 'rcode' on the same server (automatically reuses existing tunnel!)
+rlink setup --editor code --host dev-server
 
-# Example 3: Wrap Cursor as 'cur' or 'cursor'
-rlink setup --editor cursor --name cur --host dev-server
+# Example 3: Wrap Cursor as 'rcursor'
+rlink setup --editor cursor --host dev-server
 ```
 
 Once provisioned, simply type on your remote terminal:
 ```bash
 # On your remote server:
-zr .              # Opens current directory in Zed locally
-zr src/main.rs:42 # Opens file at line 42 in Zed locally
-cr .              # Opens current directory in VS Code locally
-cur .             # Opens current directory in Cursor locally
+rzed .              # Opens current directory in Zed locally
+rzed src/main.rs:42 # Opens file at line 42 in Zed locally
+rcode .             # Opens current directory in VS Code locally
+rcursor .           # Opens current directory in Cursor locally
+rwindsurf .         # Opens current directory in Windsurf locally
 ```
 
 ---

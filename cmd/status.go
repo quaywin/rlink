@@ -94,9 +94,13 @@ func runStatus(cmd *cobra.Command, args []string) error {
 				// Check for known wrapper names
 				files := strings.Fields(out)
 				var foundWrappers []string
+				known := []string{"rzed", "rcode", "rcursor", "rwindsurf", "rcode-insiders", "rsubl", "zr", "cr", "cur", "zed", "code", "cursor", "windsurf"}
 				for _, f := range files {
-					if f == "zr" || f == "cr" || f == "cur" || f == "zed" || f == "code" || f == "cursor" {
-						foundWrappers = append(foundWrappers, f)
+					for _, k := range known {
+						if f == k {
+							foundWrappers = append(foundWrappers, f)
+							break
+						}
 					}
 				}
 				if len(foundWrappers) > 0 {

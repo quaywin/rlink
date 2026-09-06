@@ -13,9 +13,12 @@ import (
 type EditorType string
 
 const (
-	EditorZed    EditorType = "zed"
-	EditorVSCode EditorType = "code"
-	EditorCursor EditorType = "cursor"
+	EditorZed          EditorType = "zed"
+	EditorVSCode       EditorType = "code"
+	EditorCursor       EditorType = "cursor"
+	EditorWindsurf     EditorType = "windsurf"
+	EditorCodeInsiders EditorType = "code-insiders"
+	EditorSublime      EditorType = "sublime"
 )
 
 // DetectedEditor represents the discovery result of a GUI editor on the local machine.
@@ -32,11 +35,11 @@ type DetectedEditor struct {
 
 // DisplayLabel formats a friendly label for CLI selection.
 func (e *DetectedEditor) DisplayLabel() string {
-	status := "Not Installed"
+	status := "Not Found"
 	if e.IsInstalled {
 		status = fmt.Sprintf("Found: %s", e.BinaryPath)
 	}
-	return fmt.Sprintf("%-20s [%s] -> remote command: '%s'", e.Name, status, e.DefaultWrapperName)
+	return fmt.Sprintf("%-24s [%s] -> default: '%s'", e.Name, status, e.DefaultWrapperName)
 }
 
 // EditorSpec defines how to search and configure an editor.
@@ -50,12 +53,14 @@ type EditorSpec struct {
 	SyntaxTemplate     string
 }
 
+// SupportedEditors lists all supported GUI editors in priority order.
+// Wrapper names follow the 'r<editor>' prefix convention (rzed, rcode, rcursor, rwindsurf, etc.).
 var SupportedEditors = []EditorSpec{
 	{
 		Type:               EditorZed,
 		Name:               "Zed",
 		Binaries:           []string{"zed", "zed-editor"},
-		DefaultWrapperName: "zr",
+		DefaultWrapperName: "rzed",
 		SyntaxTemplate:     `zed "ssh://{{.Host}}{{.Path}}"`,
 		MacCandidates: []string{
 			"/usr/local/bin/zed",
@@ -72,7 +77,7 @@ var SupportedEditors = []EditorSpec{
 		Type:               EditorVSCode,
 		Name:               "Visual Studio Code",
 		Binaries:           []string{"code"},
-		DefaultWrapperName: "cr",
+		DefaultWrapperName: "rcode",
 		SyntaxTemplate:     `code --remote ssh-remote+{{.Host}} {{.Path}}`,
 		MacCandidates: []string{
 			"/usr/local/bin/code",
@@ -88,7 +93,7 @@ var SupportedEditors = []EditorSpec{
 		Type:               EditorCursor,
 		Name:               "Cursor",
 		Binaries:           []string{"cursor"},
-		DefaultWrapperName: "cur",
+		DefaultWrapperName: "rcursor",
 		SyntaxTemplate:     `cursor --remote ssh-remote+{{.Host}} {{.Path}}`,
 		MacCandidates: []string{
 			"/usr/local/bin/cursor",
@@ -98,6 +103,52 @@ var SupportedEditors = []EditorSpec{
 			"/usr/bin/cursor",
 			"/usr/local/bin/cursor",
 			"~/.local/bin/cursor",
+		},
+	},
+	{
+		Type:               EditorWindsurf,
+		Name:               "Windsurf",
+		Binaries:           []string{"windsurf"},
+		DefaultWrapperName: "rwindsurf",
+		SyntaxTemplate:     `windsurf --remote ssh-remote+{{.Host}} {{.Path}}`,
+		MacCandidates: []string{
+			"/usr/local/bin/windsurf",
+			"/Applications/Windsurf.app/Contents/Resources/app/bin/windsurf",
+		},
+		LinuxCandidates: []string{
+			"/usr/bin/windsurf",
+			"/usr/local/bin/windsurf",
+			"~/.local/bin/windsurf",
+		},
+	},
+	{
+		Type:               EditorCodeInsiders,
+		Name:               "VS Code Insiders",
+		Binaries:           []string{"code-insiders"},
+		DefaultWrapperName: "rcode-insiders",
+		SyntaxTemplate:     `code-insiders --remote ssh-remote+{{.Host}} {{.Path}}`,
+		MacCandidates: []string{
+			"/usr/local/bin/code-insiders",
+			"/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/bin/code-insiders",
+		},
+		LinuxCandidates: []string{
+			"/usr/bin/code-insiders",
+			"/snap/bin/code-insiders",
+		},
+	},
+	{
+		Type:               EditorSublime,
+		Name:               "Sublime Text",
+		Binaries:           []string{"subl"},
+		DefaultWrapperName: "rsubl",
+		SyntaxTemplate:     `subl {{.Path}}`,
+		MacCandidates: []string{
+			"/usr/local/bin/subl",
+			"/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl",
+		},
+		LinuxCandidates: []string{
+			"/usr/bin/subl",
+			"~/.local/bin/subl",
 		},
 	},
 }

@@ -29,13 +29,13 @@ var setupCmd = &cobra.Command{
 	Short: "Interactive wizard to configure local editor and provision remote wrapper",
 	Long: `rlink setup configures your local editor mapping and provisions a wrapper script on your remote server via Reverse SSH Tunnel.
 You can run this multiple times to set up multiple different editors on the same server with custom names
-(for example: 'zr' or 'zed' for Zed, 'cr' or 'code' for VS Code, 'cur' or 'cursor' for Cursor).`,
+(for example: 'rzed' for Zed, 'rcode' for VS Code, 'rcursor' for Cursor, 'rwindsurf' for Windsurf).`,
 	RunE: runSetupWizard,
 }
 
 func init() {
-	setupCmd.Flags().StringVarP(&flagEditor, "editor", "e", "", "Target GUI editor: zed, code, or cursor")
-	setupCmd.Flags().StringVarP(&flagName, "name", "n", "", "Custom remote wrapper command name (e.g. zr, zed, cr, code, cur, cursor)")
+	setupCmd.Flags().StringVarP(&flagEditor, "editor", "e", "", "Target GUI editor: zed, code, cursor, windsurf, code-insiders, sublime")
+	setupCmd.Flags().StringVarP(&flagName, "name", "n", "", "Custom remote wrapper command name (default: rzed, rcode, rcursor, rwindsurf, etc.)")
 	setupCmd.Flags().StringVarP(&flagHost, "host", "H", "", "Remote SSH host alias from ~/.ssh/config or user@hostname")
 	setupCmd.Flags().IntVarP(&flagPort, "port", "p", 0, "Remote Forward port (default: 22222)")
 	setupCmd.Flags().BoolVarP(&flagYes, "yes", "y", false, "Automatically deploy without interactive confirmation prompt")
@@ -110,12 +110,10 @@ func runSetupWizard(cmd *cobra.Command, args []string) error {
 
 		descriptionText := fmt.Sprintf(
 			"Command you will type on the remote terminal to open %s.\n"+
-				"Tip: You can use any custom name (e.g. '%s', '%s', '%s').\n"+
-				"Run setup again anytime to wrap other editors on the same server!",
+				"Recommended convention: '%s' (with 'r' prefix for remote).\n"+
+				"Tip: You can customize any name, and wrap multiple editors on the same server!",
 			chosenEditor.Name,
 			chosenEditor.DefaultWrapperName,
-			strings.ToLower(chosenEditor.Name),
-			string(strings.ToLower(chosenEditor.Name)[0]),
 		)
 
 		formWrapperName := huh.NewForm(
@@ -123,7 +121,7 @@ func runSetupWizard(cmd *cobra.Command, args []string) error {
 				huh.NewInput().
 					Title("Remote Command Name (Wrapper Name)").
 					Description(descriptionText).
-					Placeholder("e.g. zr, zed, cr, code, cursor").
+					Placeholder(fmt.Sprintf("e.g. %s, rcode, rcursor, rwindsurf", chosenEditor.DefaultWrapperName)).
 					Value(&wrapperCmdName),
 			),
 		)
