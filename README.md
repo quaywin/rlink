@@ -4,6 +4,44 @@ Bridge your remote terminal sessions (Ghostty, Alacritty, iTerm2, tmux) to your 
 
 ---
 
+## 🚀 Quick Installation
+
+### One-line Install (macOS & Linux):
+```bash
+curl -fsSL https://raw.githubusercontent.com/quaywin/rlink/main/install.sh | bash
+```
+
+### Go Install:
+```bash
+go install github.com/quaywin/rlink@latest
+```
+
+### Build from Source:
+```bash
+git clone https://github.com/quaywin/rlink.git
+cd rlink
+go build -o rlink .
+```
+
+---
+
+## ⚡ Quick Start
+
+```bash
+# 1. Run the interactive setup wizard on your local machine
+rlink setup
+
+# 2. On your remote server terminal, instantly trigger local actions:
+rzed .                                  # Open remote folder in local Zed
+rcode src/main.rs:42                    # Open file at line 42 in local VS Code
+ropen https://github.com/quaywin/rlink  # Open URL in local browser
+ropen plot.png                          # Stream remote image & open locally
+cat token.txt | rclip                   # Copy remote output to local clipboard
+rpaste > config.yaml                    # Paste local clipboard into remote file
+```
+
+---
+
 ## 💡 The Problem & Solution
 
 When developing inside a remote server over SSH, everyday local workflows become frustrating friction points:
@@ -89,22 +127,6 @@ rlink setup --tool clip --host dev-server
 
 # Example 4: Wrap a custom local command (e.g. mpv media player)
 rlink setup --tool mpv --name rmpv --host dev-server
-```
-
-Once provisioned, simply type on your remote terminal:
-```bash
-# Code editors
-rzed .                  # Opens current directory in Zed locally
-rcode src/main.rs:42    # Opens file at line 42 in VS Code locally
-
-# Web & File Opener
-ropen https://github.com/quaywin/rlink   # Opens URL in local browser
-ropen generated_plot.png                # Streams image to local machine and opens Preview
-
-# System Clipboard
-cat id_ed25519.pub | rclip              # Copies to macOS pbcopy / Linux wl-copy
-rclip "secret token"                    # Copies string to local clipboard
-rpaste > remote_config.yaml             # Pastes local clipboard into remote file
 ```
 
 ---
@@ -272,27 +294,6 @@ Run the built-in diagnostic test directly from your remote machine:
 rzed -c     # or: rcode -c, ropen -c, rclip -c
 ```
 This tests network connectivity back to your local machine and prints actionable tips if the reverse tunnel is inactive.
-
----
-
-## 🚀 Installation & Build
-
-### One-line Install:
-```bash
-curl -fsSL https://raw.githubusercontent.com/quaywin/rlink/main/install.sh | bash
-```
-
-### Local Build:
-```bash
-go build -o rlink .
-./rlink setup
-```
-
-### Run Tests:
-```bash
-go test -v ./...
-go vet ./...
-```
 
 ---
 
