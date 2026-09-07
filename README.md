@@ -131,6 +131,82 @@ rlink setup --tool mpv --name rmpv --host dev-server
 
 ---
 
+## 🔌 Advanced Setup: Eternal Terminal (et), tmux & Sleep Auto-Reconnect
+
+### 1. Using with Eternal Terminal (`et`)
+[Eternal Terminal (ET)](https://eternalterminal.dev) is a popular remote shell that automatically reconnects across laptop sleep, IP roaming, and network switches over UDP.
+
+While `et` automatically reads `LocalForward` from `~/.ssh/config`, it requires the `-r` flag for reverse tunnels (`RemoteForward`). To make `rlink` wrappers (`rzed`, `rcode`, `ropen`, etc.) work seamlessly inside `et`:
+
+```bash
+# Connect with persistent reverse tunnel:
+et -r 22222:22 my-server
+
+# Or with persistent workspace managers (tmux / herdr):
+et -r 22222:22 my-server -c "herdr"
+```
+
+> [!TIP]
+> **Pro-Tip: Create a Shell Alias**  
+> Add this alias to your local `~/.config/fish/config.fish` or `~/.zshrc` so you never have to remember the flag:
+> ```fish
+> # In ~/.config/fish/config.fish:
+> alias etm="et -r 22222:22 my-server -c 'herdr'"
+> ```
+> Now whenever you launch `etm`, your terminal AND reverse tunnel auto-reconnect instantly after laptop sleep!
+
+---
+
+### 2. Standard OpenSSH: Preventing Idle Timeout
+To keep standard SSH sessions alive during long periods of inactivity, add keep-alive directives to your local `~/.ssh/config`:
+
+```ssh
+Host my-server
+    ServerAliveInterval 30
+    ServerAliveCountMax 3
+    TCPKeepAlive yes
+    RemoteForward 22222 localhost:22
+```
+This sends null packets every 30 seconds to prevent Wi-Fi routers and NAT firewalls from dropping the idle TCP tunnel.
+
+---
+
+### 3. Always-On Background Tunnel (macOS LaunchAgent)
+If you want the `rlink` reverse tunnel to run permanently in the background 24/7 (auto-starting on boot and reconnecting immediately whenever your Mac wakes from sleep):
+
+Create `~/Library/LaunchAgents/dev.quaywin.rlink.tunnel.plist`:
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>dev.quaywin.rlink.tunnel</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/ssh</string>
+        <string>-N</string>
+        <string>-T</string>
+        <string>-o</string>
+        <string>ServerAliveInterval=15</string>
+        <string>-o</string>
+        <string>ServerAliveCountMax=3</string>
+        <string>my-server</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+</dict>
+</plist>
+```
+Load the agent:
+```bash
+launchctl load ~/Library/LaunchAgents/dev.quaywin.rlink.tunnel.plist
+```
+
+---
+
 ## 🛠️ CLI Commands & Subcommands
 
 ### 1. `rlink setup`
@@ -239,9 +315,10 @@ rlink/
 │   │   ├── tool_test.go
 │   │   ├── ssh_daemon.go
 │   │   └── ssh_daemon_test.go
-│   ├── remote/                 # Remote SSH client & wrapper deployment
-│   │   ├── ssh.go
-│   │   └── ssh_test.go
+│   ├── remote/                 # Remote SSH client, session detection & wrapper deployment
+│   │   ├── session.go
+│   │   ├── session_test.go
+│   │   └── ssh.go
 │   ├── template/               # Zero-dependency POSIX script generators
 │   │   ├── wrapper.go
 │   │   ├── wrapper.sh.tmpl         # Editor launcher template
@@ -294,6 +371,15 @@ Run the built-in diagnostic test directly from your remote machine:
 rzed -c     # or: rcode -c, ropen -c, rclip -c
 ```
 This tests network connectivity back to your local machine and prints actionable tips if the reverse tunnel is inactive.
+
+### 4. "ssh: connect to host 127.0.0.1 port 22222: Connection refused"
+This indicates that the reverse tunnel is not currently listening on the remote server:
+- **Using Eternal Terminal (`et`)**: Remember to connect using `et -r 22222:22 <host>`. Standard `et` sessions do not establish `RemoteForward` tunnels by default.
+- **Laptop Woke from Sleep**: When a laptop sleeps, OpenSSH drops the TCP tunnel. Reconnect via `ssh <host>` (or see [Advanced Setup](#-advanced-setup-eternal-terminal-et-tmux--sleep-auto-reconnect)).
+- **Session Multiplexing (ControlMaster)**: If you logged in before running `rlink setup`, dynamically attach the tunnel on your local machine without restarting:
+  ```bash
+  ssh -O forward -R 22222:localhost:22 <host>
+  ```
 
 ---
 
