@@ -34,17 +34,6 @@ func (c *SSHClient) Run(command string) (string, error) {
 	return strings.TrimSpace(stdout.String()), nil
 }
 
-// sanitizeRemotePath converts leading ~ to $HOME so that double-quoted shell expansion works properly.
-func sanitizeRemotePath(p string) string {
-	if strings.HasPrefix(p, "~/") {
-		return "$HOME/" + p[2:]
-	}
-	if p == "~" {
-		return "$HOME"
-	}
-	return p
-}
-
 // UploadScript writes scriptContent to a remote file path with specified executable permissions.
 // Uses sh -c with positional argument to remain 100% agnostic to the remote user's login shell (fish, tcsh, zsh, etc.).
 func (c *SSHClient) UploadScript(remotePath string, scriptContent string) error {
