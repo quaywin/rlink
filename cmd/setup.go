@@ -420,6 +420,22 @@ func runSetupWizard(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Detect if user currently has an active SSH session to selectedHost and dynamically attach tunnel if supported
+	sessionInfo := remote.AttachOrDetectLiveSession(selectedHost, connectPort, 22)
+	if sessionInfo.HasMasterSession {
+		if sessionInfo.TunnelDynamicallyAttached {
+			fmt.Println("⚡ Detected active SSH connection (ControlMaster). Dynamically attached reverse tunnel!")
+			fmt.Printf("   -> Port %d is now live on '%s' without needing to reconnect!\n", connectPort, selectedHost)
+		} else if sessionInfo.Error != nil {
+			fmt.Printf("Notice: Found active master session (PID %d) but could not attach tunnel on the fly: %v\n", sessionInfo.MasterPID, sessionInfo.Error)
+			fmt.Printf("        Please run 'ssh -O exit %s' and reconnect to activate the tunnel.\n", selectedHost)
+		}
+	} else if len(sessionInfo.RunningPIDs) > 0 {
+		fmt.Printf("\n⚠️  Detected active SSH terminal session to '%s' (PID %v).\n", selectedHost, sessionInfo.RunningPIDs)
+		fmt.Println("   Since this session was opened before setup, please restart it:")
+		fmt.Printf("   Type 'exit' in your remote terminal, then run 'ssh %s' again to activate the tunnel.\n", selectedHost)
+	}
+
 	// Print final congratulations & usage examples tailored to chosen tool
 	fmt.Println("\n=========================================================")
 	fmt.Println("🎉 Setup Complete!")
