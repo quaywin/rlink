@@ -131,79 +131,23 @@ rlink setup --tool mpv --name rmpv --host dev-server
 
 ---
 
-## 🔌 Advanced Setup: Eternal Terminal (et), tmux & Sleep Auto-Reconnect
+## 🔌 Eternal Terminal (`et`) & Keep-Alive Tips
 
-### 1. Using with Eternal Terminal (`et`)
-[Eternal Terminal (ET)](https://eternalterminal.dev) is a popular remote shell that automatically reconnects across laptop sleep, IP roaming, and network switches over UDP.
+- **Eternal Terminal (`et`)**:
+  `et` reconnects automatically across laptop sleep and network switches over UDP. Use `-r 22222:22` to forward the reverse tunnel:
+  ```bash
+  et -r 22222:22 my-server
+  et -r 22222:22 my-server -c "herdr"    # or tmux
+  ```
+  *(Pro-tip: Add `alias etm="et -r 22222:22 my-server"` to your `~/.zshrc` or `config.fish`)*.
 
-While `et` automatically reads `LocalForward` from `~/.ssh/config`, it requires the `-r` flag for reverse tunnels (`RemoteForward`). To make `rlink` wrappers (`rzed`, `rcode`, `ropen`, etc.) work seamlessly inside `et`:
-
-```bash
-# Connect with persistent reverse tunnel:
-et -r 22222:22 my-server
-
-# Or with persistent workspace managers (tmux / herdr):
-et -r 22222:22 my-server -c "herdr"
-```
-
-> [!TIP]
-> **Pro-Tip: Create a Shell Alias**  
-> Add this alias to your local `~/.config/fish/config.fish` or `~/.zshrc` so you never have to remember the flag:
-> ```fish
-> # In ~/.config/fish/config.fish:
-> alias etm="et -r 22222:22 my-server -c 'herdr'"
-> ```
-> Now whenever you launch `etm`, your terminal AND reverse tunnel auto-reconnect instantly after laptop sleep!
-
----
-
-### 2. Standard OpenSSH: Preventing Idle Timeout
-To keep standard SSH sessions alive during long periods of inactivity, add keep-alive directives to your local `~/.ssh/config`:
-
-```ssh
-Host my-server
-    ServerAliveInterval 30
-    ServerAliveCountMax 3
-    TCPKeepAlive yes
-    RemoteForward 22222 localhost:22
-```
-This sends null packets every 30 seconds to prevent Wi-Fi routers and NAT firewalls from dropping the idle TCP tunnel.
-
----
-
-### 3. Always-On Background Tunnel (macOS LaunchAgent)
-If you want the `rlink` reverse tunnel to run permanently in the background 24/7 (auto-starting on boot and reconnecting immediately whenever your Mac wakes from sleep):
-
-Create `~/Library/LaunchAgents/dev.quaywin.rlink.tunnel.plist`:
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>dev.quaywin.rlink.tunnel</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/usr/bin/ssh</string>
-        <string>-N</string>
-        <string>-T</string>
-        <string>-o</string>
-        <string>ServerAliveInterval=15</string>
-        <string>-o</string>
-        <string>ServerAliveCountMax=3</string>
-        <string>my-server</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-</dict>
-</plist>
-```
-Load the agent:
-```bash
-launchctl load ~/Library/LaunchAgents/dev.quaywin.rlink.tunnel.plist
-```
+- **Preventing SSH Idle Timeout**:
+  Add keep-alive to `~/.ssh/config` to prevent routers and firewalls from dropping idle sessions:
+  ```ssh
+  Host my-server
+      ServerAliveInterval 30
+      ServerAliveCountMax 3
+  ```
 
 ---
 
@@ -278,59 +222,18 @@ Displays semantic version, target OS, architecture, and compiler runtime informa
 
 ---
 
-## 🏗️ Architecture & Project Layout
-
-Aligned with the standard Go project structure and `agys`:
+## 🏗️ Project Layout
 
 ```
 rlink/
-├── .github/
-│   └── workflows/
-│       ├── ci.yml              # Multi-OS CI matrix (Ubuntu & macOS)
-│       └── release.yml         # GitHub Actions GoReleaser automation
-├── .goreleaser.yaml            # Multi-arch GoReleaser v2 configuration
-├── AGENTS.md                   # Agent development rules and safety standards
-├── GEMINI.md                   # AI consistency guidelines
-├── LICENSE                     # MIT License
-├── README.md                   # Project documentation
-├── cmd/                        # Cobra CLI commands
-│   ├── completion.go           # Shell autocompletion
-│   ├── remove.go               # Wrapper uninstaller & config rollback
-│   ├── root.go                 # Root command & version integration
-│   ├── setup.go                # Interactive TUI Wizard (Charm huh) & CLI flags
-│   ├── status.go               # Host & tunnel status viewer
-│   └── version.go              # Version command
-├── install.sh                  # One-line curl installer for macOS & Linux
-├── main.go                     # Application entrypoint calling cmd.Execute()
-├── pkg/                        # Core reusable libraries
-│   ├── auth/                   # Isolated Ed25519 key management & authorized_keys
-│   │   ├── key.go
-│   │   └── key_test.go
-│   ├── config/                 # OpenSSH config parser & RemoteForward injector
-│   │   ├── model.go
-│   │   ├── ssh_config.go
-│   │   └── ssh_config_test.go
-│   ├── detector/               # Local tool, editor & SSH daemon discovery
-│   │   ├── tool.go
-│   │   ├── tool_test.go
-│   │   ├── ssh_daemon.go
-│   │   └── ssh_daemon_test.go
-│   ├── remote/                 # Remote SSH client, session detection & wrapper deployment
-│   │   ├── session.go
-│   │   ├── session_test.go
-│   │   └── ssh.go
-│   ├── template/               # Zero-dependency POSIX script generators
-│   │   ├── wrapper.go
-│   │   ├── wrapper.sh.tmpl         # Editor launcher template
-│   │   ├── wrapper_opener.sh.tmpl  # Web & file opener template
-│   │   ├── wrapper_clip.sh.tmpl    # Clipboard copy template
-│   │   ├── wrapper_paste.sh.tmpl   # Clipboard paste template
-│   │   ├── wrapper_custom.sh.tmpl  # Custom command template
-│   │   └── wrapper_test.go
-│   └── version/                # Build-time version metadata
-│       └── version.go
-├── go.mod
-└── go.sum
+├── cmd/           # Cobra CLI commands (setup, status, remove)
+├── pkg/
+│   ├── auth/      # Dedicated Ed25519 keypair & authorized_keys
+│   ├── config/    # OpenSSH config parser & RemoteForward injector
+│   ├── detector/  # Local GUI editor & tool discovery
+│   ├── remote/    # Remote execution & live session detection
+│   └── template/  # Zero-dependency POSIX shell wrapper generators
+└── install.sh     # One-line installer script
 ```
 
 ---
@@ -375,7 +278,7 @@ This tests network connectivity back to your local machine and prints actionable
 ### 4. "ssh: connect to host 127.0.0.1 port 22222: Connection refused"
 This indicates that the reverse tunnel is not currently listening on the remote server:
 - **Using Eternal Terminal (`et`)**: Remember to connect using `et -r 22222:22 <host>`. Standard `et` sessions do not establish `RemoteForward` tunnels by default.
-- **Laptop Woke from Sleep**: When a laptop sleeps, OpenSSH drops the TCP tunnel. Reconnect via `ssh <host>` (or see [Advanced Setup](#-advanced-setup-eternal-terminal-et-tmux--sleep-auto-reconnect)).
+- **Laptop Woke from Sleep**: When a laptop sleeps, OpenSSH drops the TCP tunnel. Reconnect via `ssh <host>` (or see [Eternal Terminal & Keep-Alive Tips](#-eternal-terminal-et--keep-alive-tips)).
 - **Session Multiplexing (ControlMaster)**: If you logged in before running `rlink setup`, dynamically attach the tunnel on your local machine without restarting:
   ```bash
   ssh -O forward -R 22222:localhost:22 <host>
