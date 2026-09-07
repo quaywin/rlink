@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,6 +16,13 @@ func DefaultSSHConfigPath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("could not determine user home directory: %w", err)
 	}
+
+	if strings.Contains(home, ".agys") {
+		if u, err := user.Current(); err == nil && u.HomeDir != "" {
+			return filepath.Join(u.HomeDir, ".ssh", "config"), nil
+		}
+	}
+
 	return filepath.Join(home, ".ssh", "config"), nil
 }
 

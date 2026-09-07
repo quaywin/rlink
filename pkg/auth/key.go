@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strings"
 )
@@ -17,13 +18,28 @@ type KeyPair struct {
 	PublicKeyContent  string
 }
 
-// DefaultKeyPaths returns the standard location for rlink's dedicated keypair.
-func DefaultKeyPaths() (priv string, pub string, err error) {
+// getUserSSHDir returns the local user's authentic ~/.ssh directory.
+func getUserSSHDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", "", fmt.Errorf("failed to get user home directory: %w", err)
+		return "", fmt.Errorf("failed to get user home directory: %w", err)
 	}
-	sshDir := filepath.Join(home, ".ssh")
+
+	if strings.Contains(home, ".agys") {
+		if u, err := user.Current(); err == nil && u.HomeDir != "" {
+			return filepath.Join(u.HomeDir, ".ssh"), nil
+		}
+	}
+
+	return filepath.Join(home, ".ssh"), nil
+}
+
+// DefaultKeyPaths returns the standard location for rlink's dedicated keypair.
+func DefaultKeyPaths() (priv string, pub string, err error) {
+	sshDir, err := getUserSSHDir()
+	if err != nil {
+		return "", "", err
+	}
 	return filepath.Join(sshDir, "rlink_ed25519"), filepath.Join(sshDir, "rlink_ed25519.pub"), nil
 }
 
@@ -71,11 +87,10 @@ func EnsureLocalSSHKeyPair() (*KeyPair, error) {
 
 // AuthorizeLocalKey ensures the given public key is listed in ~/.ssh/authorized_keys.
 func AuthorizeLocalKey(pubKeyContent string) error {
-	home, err := os.UserHomeDir()
+	sshDir, err := getUserSSHDir()
 	if err != nil {
-		return fmt.Errorf("failed to get user home directory: %w", err)
+		return err
 	}
-	sshDir := filepath.Join(home, ".ssh")
 	authKeysPath := filepath.Join(sshDir, "authorized_keys")
 
 	if err := os.MkdirAll(sshDir, 0700); err != nil {
