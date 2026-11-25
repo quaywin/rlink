@@ -37,7 +37,7 @@ You can run this multiple times to set up multiple different tools on the same s
 }
 
 func init() {
-	setupCmd.Flags().StringVarP(&flagTool, "tool", "t", "", "Target tool or command: zed, code, cursor, windsurf, open, clip, paste, or custom command")
+	setupCmd.Flags().StringVarP(&flagTool, "tool", "t", "", "Target tool or command: zed, wu, code, cursor, windsurf, open, clip, paste, or custom command")
 	setupCmd.Flags().StringVarP(&flagEditor, "editor", "e", "", "Target GUI editor (alias for --tool)")
 	setupCmd.Flags().StringVarP(&flagName, "name", "n", "", "Custom remote wrapper command name (default: rzed, rcode, ropen, rclip, etc.)")
 	setupCmd.Flags().StringVarP(&flagHost, "host", "H", "", "Remote SSH host alias from ~/.ssh/config or user@hostname")

@@ -77,7 +77,7 @@ if [ -n "$SSH_KEY" ] && [ -f "$SSH_KEY" ]; then
     SSH_ARGS="$SSH_ARGS -i $SSH_KEY"
 fi
 
-REMOTE_CLIP_CMD="export PATH=\"/usr/local/bin:/opt/homebrew/bin:\$HOME/.local/bin:\$PATH\"; pbcopy 2>/dev/null || wl-copy 2>/dev/null || xclip -selection clipboard 2>/dev/null || xsel --clipboard 2>/dev/null"
+REMOTE_CLIP_CMD="sh -c \"export PATH=\\\"/usr/local/bin:/opt/homebrew/bin:\\\$HOME/.local/bin:\\\$PATH\\\"; pbcopy 2>/dev/null || wl-copy 2>/dev/null || xclip -selection clipboard 2>/dev/null || xsel --clipboard 2>/dev/null\""
 
 # If stdin is piped
 if [ ! -t 0 ]; then

@@ -70,9 +70,22 @@ if [ -n "$SSH_KEY" ] && [ -f "$SSH_KEY" ]; then
     SSH_ARGS="$SSH_ARGS -i $SSH_KEY"
 fi
 
+# Quote an argument safely for sh -c "..." across POSIX sh, bash, zsh, and fish
+quote_sh_arg() {
+    escaped=$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\$/\\$/g')
+    printf '"%s"' "$escaped"
+}
+
+REMOTE_ARGS=$(quote_sh_arg "$LOCAL_BIN")
+for arg in "$@"; do
+    REMOTE_ARGS="$REMOTE_ARGS $(quote_sh_arg "$arg")"
+done
+
+REMOTE_CMD="sh -c \"export PATH=\\\"/usr/local/bin:/opt/homebrew/bin:\\\$HOME/.local/bin:\\\$PATH\\\"; exec \\\"\\\$0\\\" \\\"\\\$@\\\"\" $REMOTE_ARGS"
+
 # Forward stdin if piped, otherwise pass arguments
 if [ ! -t 0 ]; then
-    cat | ssh $SSH_ARGS "$LOCAL_USER@127.0.0.1" "export PATH=\"/usr/local/bin:/opt/homebrew/bin:\$HOME/.local/bin:\$PATH\"; $LOCAL_BIN \"\$@\"" -- "$@"
+    cat | ssh $SSH_ARGS "$LOCAL_USER@127.0.0.1" "$REMOTE_CMD"
 else
-    ssh $SSH_ARGS "$LOCAL_USER@127.0.0.1" "export PATH=\"/usr/local/bin:/opt/homebrew/bin:\$HOME/.local/bin:\$PATH\"; $LOCAL_BIN \"\$@\"" -- "$@"
+    ssh $SSH_ARGS "$LOCAL_USER@127.0.0.1" "$REMOTE_CMD"
 fi

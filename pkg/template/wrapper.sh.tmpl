@@ -141,8 +141,10 @@ case "$CMD" in
         ;;
 esac
 
-# Ensure standard GUI/CLI paths are included in non-login SSH environment
-REMOTE_TRIGGER="export PATH=\"/usr/local/bin:/opt/homebrew/bin:\$HOME/.local/bin:\$PATH\"; $CMD"
+# Ensure standard GUI/CLI paths are included and execute under POSIX sh
+# (safe regardless of local login shell such as fish, zsh, or bash)
+ESCAPED_CMD=$(printf '%s' "$CMD" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\$/\\$/g')
+REMOTE_TRIGGER="sh -c \"export PATH=\\\"/usr/local/bin:/opt/homebrew/bin:\\\$HOME/.local/bin:\\\$PATH\\\"; $ESCAPED_CMD\""
 
 # Build SSH command options
 SSH_ARGS="-p $CONNECT_PORT -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"

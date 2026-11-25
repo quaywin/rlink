@@ -75,6 +75,6 @@ if [ -n "$SSH_KEY" ] && [ -f "$SSH_KEY" ]; then
     SSH_ARGS="$SSH_ARGS -i $SSH_KEY"
 fi
 
-REMOTE_PASTE_CMD="export PATH=\"/usr/local/bin:/opt/homebrew/bin:\$HOME/.local/bin:\$PATH\"; pbpaste 2>/dev/null || wl-paste 2>/dev/null || xclip -selection clipboard -o 2>/dev/null || xsel --clipboard -o 2>/dev/null"
+REMOTE_PASTE_CMD="sh -c \"export PATH=\\\"/usr/local/bin:/opt/homebrew/bin:\\\$HOME/.local/bin:\\\$PATH\\\"; pbpaste 2>/dev/null || wl-paste 2>/dev/null || xclip -selection clipboard -o 2>/dev/null || xsel --clipboard -o 2>/dev/null\""
 
 ssh $SSH_ARGS "$LOCAL_USER@127.0.0.1" "$REMOTE_PASTE_CMD"

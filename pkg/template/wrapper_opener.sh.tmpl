@@ -82,11 +82,17 @@ if [ -n "$SSH_KEY" ] && [ -f "$SSH_KEY" ]; then
     SSH_ARGS="$SSH_ARGS -i $SSH_KEY"
 fi
 
+quote_sh_arg() {
+    escaped=$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\$/\\$/g')
+    printf '"%s"' "$escaped"
+}
+
 # Detect if target is a URL
 case "$TARGET" in
     http://*|https://*|ftp://*|file://*|mailto:*)
         printf "🌐 Opening URL '%s' on local machine...\n" "$TARGET"
-        REMOTE_CMD="export PATH=\"/usr/local/bin:/opt/homebrew/bin:\$HOME/.local/bin:\$PATH\"; open \"$TARGET\" 2>/dev/null || xdg-open \"$TARGET\" 2>/dev/null"
+        QUOTED_TARGET=$(quote_sh_arg "$TARGET")
+        REMOTE_CMD="sh -c \"export PATH=\\\"/usr/local/bin:/opt/homebrew/bin:\\\$HOME/.local/bin:\\\$PATH\\\"; open \\\"\\\$1\\\" 2>/dev/null || xdg-open \\\"\\\$1\\\" 2>/dev/null\" _ $QUOTED_TARGET"
         ssh $SSH_ARGS "$LOCAL_USER@127.0.0.1" "$REMOTE_CMD"
         exit 0
         ;;
@@ -101,7 +107,9 @@ fi
 if [ -d "$TARGET" ]; then
     ABS_DIR=$(cd "$TARGET" 2>/dev/null && pwd)
     printf "📁 Opening remote directory '%s' on local machine...\n" "$ABS_DIR"
-    REMOTE_CMD="export PATH=\"/usr/local/bin:/opt/homebrew/bin:\$HOME/.local/bin:\$PATH\"; open \"sftp://$HOST_ALIAS$ABS_DIR\" 2>/dev/null || xdg-open \"sftp://$HOST_ALIAS$ABS_DIR\" 2>/dev/null || echo 'Opened remote directory: $ABS_DIR'"
+    QUOTED_URI=$(quote_sh_arg "sftp://$HOST_ALIAS$ABS_DIR")
+    QUOTED_DIR=$(quote_sh_arg "$ABS_DIR")
+    REMOTE_CMD="sh -c \"export PATH=\\\"/usr/local/bin:/opt/homebrew/bin:\\\$HOME/.local/bin:\\\$PATH\\\"; open \\\"\\\$1\\\" 2>/dev/null || xdg-open \\\"\\\$1\\\" 2>/dev/null || printf 'Opened remote directory: %s\n' \\\"\\\$2\\\"\" _ $QUOTED_URI $QUOTED_DIR"
     ssh $SSH_ARGS "$LOCAL_USER@127.0.0.1" "$REMOTE_CMD"
     exit 0
 fi
@@ -112,5 +120,7 @@ REMOTE_TMP="/tmp/rlink_downloads/$HOST_ALIAS"
 
 printf "📥 Streaming '%s' to local machine and opening...\n" "$BASENAME"
 
-CAT_CMD="mkdir -p '$REMOTE_TMP' && cat > '$REMOTE_TMP/$BASENAME' && (open '$REMOTE_TMP/$BASENAME' 2>/dev/null || xdg-open '$REMOTE_TMP/$BASENAME' 2>/dev/null)"
-cat "$TARGET" | ssh $SSH_ARGS "$LOCAL_USER@127.0.0.1" "export PATH=\"/usr/local/bin:/opt/homebrew/bin:\$HOME/.local/bin:\$PATH\"; $CAT_CMD"
+QUOTED_TMP=$(quote_sh_arg "$REMOTE_TMP")
+QUOTED_BASE=$(quote_sh_arg "$BASENAME")
+REMOTE_CMD="sh -c \"export PATH=\\\"/usr/local/bin:/opt/homebrew/bin:\\\$HOME/.local/bin:\\\$PATH\\\"; mkdir -p \\\"\\\$1\\\" && cat > \\\"\\\$1/\\\$2\\\" && (open \\\"\\\$1/\\\$2\\\" 2>/dev/null || xdg-open \\\"\\\$1/\\\$2\\\" 2>/dev/null)\" _ $QUOTED_TMP $QUOTED_BASE"
+cat "$TARGET" | ssh $SSH_ARGS "$LOCAL_USER@127.0.0.1" "$REMOTE_CMD"

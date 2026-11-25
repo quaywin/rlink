@@ -25,6 +25,7 @@ type ToolType string
 const (
 	// GUI Code Editors
 	ToolZed          ToolType = "zed"
+	ToolWu           ToolType = "wu"
 	ToolVSCode       ToolType = "code"
 	ToolCursor       ToolType = "cursor"
 	ToolWindsurf     ToolType = "windsurf"
@@ -47,6 +48,7 @@ type EditorType = ToolType
 
 const (
 	EditorZed          = ToolZed
+	EditorWu           = ToolWu
 	EditorVSCode       = ToolVSCode
 	EditorCursor       = ToolCursor
 	EditorWindsurf     = ToolWindsurf
@@ -126,6 +128,25 @@ var SupportedEditors = []ToolSpec{
 			"~/.local/bin/zed",
 			"/usr/bin/zed",
 			"/usr/local/bin/zed",
+		},
+	},
+	{
+		Type:               ToolWu,
+		Category:           CategoryEditor,
+		Name:               "Wu",
+		Description:        "Zed-based editor with built-in multi-agent workspace",
+		Binaries:           []string{"wu"},
+		DefaultWrapperName: "rwu",
+		SyntaxTemplate:     `wu "ssh://{{.Host}}{{.Path}}"`,
+		MacCandidates: []string{
+			"~/.local/bin/wu",
+			"/usr/local/bin/wu",
+			"/Applications/Wu.app/Contents/MacOS/cli",
+		},
+		LinuxCandidates: []string{
+			"~/.local/bin/wu",
+			"/usr/bin/wu",
+			"/usr/local/bin/wu",
 		},
 	},
 	{
